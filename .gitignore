@@ -1,0 +1,26 @@
+# Personal AoC downloads and local configuration
+/data/**/input.txt
+/data/**/puzzle.html
+/data/**/puzzle.txt
+/data/**/answers.local.toml
+.env
+.env.*
+!.env.example
+.aoc-cache/
+# Language/editor build state
+**/target/
+**/_build/
+**/deps/
+**/dist-newstyle/
+**/.stack-work/
+**/.scala-build/
+**/.bsp/
+**/.bloop/
+**/.metals/
+**/.elixir_ls/
+**/.ghc.environment.*
+.idea/workspace.xml
+.DS_Store
+
+# Shared native runner cache
+/.aoc/

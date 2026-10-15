@@ -1,25 +1,19 @@
-module Year2021.Day06 (run) where
+module Year2021.Day06 (parse, part1, part2, samples) where
+
+import AOC (Sample (..))
 
 import Data.Char (digitToInt, isDigit)
-import System.IO (isEOF)
 
-run :: IO ()
-run = do
-    fishes <- readInput
-    let cald = calcFirst fishes
-    print $ sum $ calcStages 255 cald
+parse :: String -> [Int]
+parse = map digitToInt . filter isDigit
 
-readInput :: IO [Int]
-readInput = do
-    done <- isEOF
-    if done
-        then return []
-        else do
-            newInput <- getChar
-            input <- readInput
-            if isDigit newInput
-                then return (digitToInt newInput : input)
-                else return input
+-- The committed implementation only solved part two.
+part1 :: [Int] -> Int
+part1 = undefined
+
+-- Preserve the original iteration logic.
+part2 :: [Int] -> Int
+part2 fishes = sum $ calcStages 255 (calcFirst fishes)
 
 calcFirst :: [Int] -> [Int]
 calcFirst = foldl (\cald x -> take x cald ++ [(cald !! x) + 1] ++ drop (x + 1) cald) [0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -35,3 +29,8 @@ calcStages n stages = foldl (\m d -> let i = (d + 7) `mod` 9 in (take i m ++ [(m
 -- calcFish :: Int -> [Int]
 -- calcFish 0 = [6, 8]
 -- calcFish x = [x - 1]
+
+samples :: [Sample]
+samples = [Sample (unlines
+    [ "3,4,3,1,2"
+    ]) Nothing (Just "26984457539")]

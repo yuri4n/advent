@@ -1,21 +1,33 @@
-# yurian's Advent of Code
+# Advent of Code
 
-These are my solutions for the advent of code of all years. They've been done in multiple programming languages using different build tools, therefore, please use this index as reference to where to find each solution.
+My Advent of Code solutions in Rust, Go, Elixir, Scala, and Haskell, with a shared toolkit for creating, running, and checking both parts of a puzzle. Solution files stay focused on puzzle logic; each language uses its own idioms and native build tools.
 
-- [ ] Year 2022 [[Rust](rust/modules/y22/)].
-  - [x] Day 1 [[Rust](rust/modules/y22/d01/)].
-- [ ] Year 2021 [[Haskell](haskell/src/Year2021/) | [Rust](rust/y21/) | [Scala](scala/src/main/scala/solutions/y21/)].
-  - [x] Day 1 [[Scala](scala/src/main/scala/solutions/y21/Day01.scala)].
-  - [x] Day 2 [[Scala](scala/src/main/scala/solutions/y21/Day02.scala)].
-  - [x] Day 3 [[Scala](scala/src/main/scala/solutions/y21/Day03.scala)].
-  - [x] Day 4 [[Haskell](haskell/src/Year2021/Day04.hs)].
-  - [x] Day 5 [[Haskell](haskell/src/Year2021/Day05.hs)].
-  - [x] Day 6 [[Haskell](haskell/src/Year2021/Day06.hs)].
-  - [x] Day 7 [[Rust](rust/modules/y21/d07/)].
-  - [x] Day 8 [[Rust](rust/modules/y21/d08/)].
-    - [x] Part I.
-    - [ ] Part II.
-  - [x] Day 9 [[Haskell](/haskell/src/Year2021/Day09.hs)].
-- [ ] Year 2020 [[Elxir](elixir/lib/y20/) | [Go](go/y20)].
-  - [x] Day 1 [[Go](go/y20/d01/)]
-  - [x] Day 2 [[Elixir](elixir/lib/y20/d02.exs)]
+```sh
+./aoc doctor
+./aoc list
+./aoc test 2022 1 --lang rust --part 2
+./aoc run 2022 1 --lang rust --part 2 --time
+./aoc new 2026 1 --lang rust
+# Implement a part and add its sample before running the new day.
+./aoc watch 2026 1 --lang rust
+```
+
+The launcher builds the Rust CLI with Cargo. Install Rust and the toolchain for the language you want to use; `doctor` reports missing tools. New solutions contain unfinished stubs, never generated puzzle answers.
+
+With all five toolchains installed, run `./scripts/check.sh` to verify the toolkit and existing inline samples. No personal puzzle input is needed.
+
+Real puzzle inputs live in ignored `data/yYY/dDD/input.txt` files. Existing local inputs are retained during migration. Fetch your own input with `./aoc fetch YEAR DAY` after setting `AOC_SESSION` securely in your environment. Sample inputs and expected answers live in native language tests.
+
+- [Developer manual](docs/manual.md): setup, all commands, offline use, samples, timing, benchmarks, and adding a language.
+- [Editors and IDEs](docs/editors.md): project roots, language servers, formatting, run/test tasks, and debugging.
+- [Design and migration](docs/architecture.md): accepted decisions, data contract, existing solutions, and limitations.
+
+Open [advent.code-workspace](advent.code-workspace) for optional VS Code integration, or open the language project in your preferred editor. The build metadata is the source of truth; no editor is required.
+
+| Language | Project | Build tool |
+| --- | --- | --- |
+| Rust | [rust/](rust/) | Cargo; one crate per year |
+| Go | [go/](go/) | Go modules |
+| Elixir | [elixir/](elixir/) | Mix |
+| Scala | [scala/](scala/) | Scala CLI |
+| Haskell | [haskell/](haskell/) | Cabal |

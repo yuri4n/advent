@@ -1,0 +1,26 @@
+version = 1
+
+[[languages]]
+name = "rust"
+extension = "rs"
+adapter = "scripts/languages/rust.sh"
+
+[[languages]]
+name = "go"
+extension = "go"
+adapter = "scripts/languages/go.sh"
+
+[[languages]]
+name = "elixir"
+extension = "ex"
+adapter = "scripts/languages/elixir.sh"
+
+[[languages]]
+name = "scala"
+extension = "scala"
+adapter = "scripts/languages/scala.sh"
+
+[[languages]]
+name = "haskell"
+extension = "hs"
+adapter = "scripts/languages/haskell.sh"

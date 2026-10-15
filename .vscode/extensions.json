@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "EditorConfig.EditorConfig",
+    "rust-lang.rust-analyzer",
+    "golang.go",
+    "JakeBecker.elixir-ls",
+    "scalameta.metals",
+    "haskell.haskell",
+    "tamasfe.even-better-toml"
+  ]
+}

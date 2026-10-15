@@ -1,15 +1,9 @@
-module Year2021.Day04 (main) where
+module Year2021.Day04 (parse, part1, part2, samples) where
+
+import AOC (Sample (..))
 
 import Data.List (transpose, (\\))
 import Data.List.Split (splitOn)
-import Data.Text (Text, strip)
-import Data.Text.Conversions (convertText)
-
--- Plug this into the exe's main to run this day.
-main :: IO ()
-main = do
-    input <- buildInput
-    putStr $ show $ play (ballots input) (boards input) []
 
 type Board = [[Int]]
 
@@ -18,17 +12,20 @@ data Input = Input
     , boards :: [Board]
     }
 
-buildInput :: IO Input
-buildInput = do
-    ballots <- fmap (map (read :: String -> Int) . splitOn ",") getLine
-    contents <- getContents
-    let strBoards = [splitOn "\n" (convertText (strip $ convertText strBoard :: Text)) | strBoard <- splitOn "\n\n" contents]
-    let boards = [buildBoard strBoard | strBoard <- strBoards]
-    return
-        Input
-            { ballots = ballots
-            , boards = boards
-            }
+parse :: String -> Input
+parse source = Input
+    { ballots = map read (splitOn "," (head inputLines))
+    , boards = map buildBoard (filter (not . null) (splitOn [""] (drop 1 inputLines)))
+    }
+  where
+    inputLines = lines source
+
+-- The original solver already calculates every winning score in order.
+part1 :: Input -> Int
+part1 input = head $ play (ballots input) (boards input) []
+
+part2 :: Input -> Int
+part2 input = last $ play (ballots input) (boards input) []
 
 buildBoard :: [String] -> Board
 buildBoard str = [map (read :: String -> Int) (words line) | line <- str]
@@ -55,3 +52,26 @@ play bls brds wscores =
     bl = head bls
     mrks = [mark bl brd | brd <- brds]
     newbls = drop 1 bls
+
+samples :: [Sample]
+samples = [Sample (unlines
+    [ "7,4,9,5,11,17,23,2,0,14,21,24,10,16,13,6,15,25,12,22,18,20,8,19,3,26,1"
+    , ""
+    , "22 13 17 11  0"
+    , " 8  2 23  4 24"
+    , "21  9 14 16  7"
+    , " 6 10  3 18  5"
+    , " 1 12 20 15 19"
+    , ""
+    , " 3 15  0  2 22"
+    , " 9 18 13 17  5"
+    , "19  8  7 25 23"
+    , "20 11 10 24  4"
+    , "14 21 16 12  6"
+    , ""
+    , "14 21 17 24  4"
+    , "10 16 15  9 19"
+    , "18  8 23 26 20"
+    , "22 11 13  6  5"
+    , " 2  0 12  3  7"
+    ]) (Just "4512") (Just "1924")]

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export AOC_ROOT="${AOC_ROOT:-$root}"
+exec cargo run --quiet --locked --manifest-path "$root/toolkit/Cargo.toml" -- "$@"

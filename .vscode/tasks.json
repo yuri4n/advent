@@ -1,0 +1,127 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AoC: run",
+      "type": "process",
+      "command": "${workspaceFolder:repository}/aoc",
+      "args": [
+        "run",
+        "${input:year}",
+        "${input:day}",
+        "--lang",
+        "${input:language}",
+        "--part",
+        "${input:part}",
+        "--time"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder:repository}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AoC: test",
+      "type": "process",
+      "command": "${workspaceFolder:repository}/aoc",
+      "args": [
+        "test",
+        "${input:year}",
+        "${input:day}",
+        "--lang",
+        "${input:language}",
+        "--part",
+        "${input:part}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder:repository}"
+      },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "AoC: watch",
+      "type": "process",
+      "command": "${workspaceFolder:repository}/aoc",
+      "args": [
+        "watch",
+        "${input:year}",
+        "${input:day}",
+        "--lang",
+        "${input:language}",
+        "--part",
+        "${input:part}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder:repository}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AoC: new day",
+      "type": "process",
+      "command": "${workspaceFolder:repository}/aoc",
+      "args": [
+        "new",
+        "${input:year}",
+        "${input:day}",
+        "--lang",
+        "${input:language}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder:repository}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AoC: doctor",
+      "type": "process",
+      "command": "${workspaceFolder:repository}/aoc",
+      "args": [
+        "doctor"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder:repository}"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "year",
+      "type": "promptString",
+      "description": "Puzzle year (for example, 2022)",
+      "default": "2022"
+    },
+    {
+      "id": "day",
+      "type": "promptString",
+      "description": "Puzzle day (1–25)",
+      "default": "1"
+    },
+    {
+      "id": "language",
+      "type": "pickString",
+      "description": "Solution language",
+      "options": [
+        "rust",
+        "go",
+        "elixir",
+        "scala",
+        "haskell"
+      ],
+      "default": "rust"
+    },
+    {
+      "id": "part",
+      "type": "pickString",
+      "description": "Puzzle part",
+      "options": [
+        "both",
+        "1",
+        "2"
+      ],
+      "default": "both"
+    }
+  ]
+}

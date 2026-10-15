@@ -1,10 +1,11 @@
-module Year2021.Day09 (run, star1, star2) where
+module Year2021.Day09 (parse, part1, part2, samples) where
+
+import AOC (Sample (..))
 
 import Data.Array as Array (Array, elems, listArray, (!))
 import Data.Char (digitToInt, isDigit)
 import Data.List (sort)
 import Data.Set (fromList, toList)
-import System.IO (isEOF)
 import Prelude hiding (Left, Right)
 
 type HeightMap = Array.Array Int (Array.Array Int Int)
@@ -27,26 +28,13 @@ findLowPoints xxs = [(i, j) | i <- [0 .. m - 1], j <- [0 .. n - 1], isLp i j]
     n = length (head $ elems xxs)
     isLp = isLowPoint m n xxs
 
-parseInput :: IO HeightMap
-parseInput =
-    parseInput' >>= \xxs ->
-        let m = length xxs
-         in return $ Array.listArray (0, m - 1) xxs
+parse :: String -> HeightMap
+parse source = Array.listArray (0, length rows - 1) rows
   where
-    parseInput' = do
-        done <- isEOF
-        if done
-            then return []
-            else do
-                ln <- getLine
-                let
-                    n = length ln
-                    lnInts = Array.listArray (0, n - 1) [digitToInt ch | ch <- ln, isDigit ch]
-                rest <- parseInput'
-                return (lnInts : rest)
+    rows = [Array.listArray (0, length ln - 1) [digitToInt ch | ch <- ln, isDigit ch] | ln <- lines source]
 
-star1 :: HeightMap -> Int
-star1 xxs =
+part1 :: HeightMap -> Int
+part1 xxs =
     let lowPoints = findLowPoints xxs
      in sum [(xxs ! i ! j) + 1 | (i, j) <- lowPoints]
 
@@ -91,15 +79,17 @@ findBasinFromLow pair xxs = toList . fromList $ findBasinFromLow' pair Low
     findBasinFromLow' pair' Right = pairIfNotWall ([up, down, left] >>= ($ pair')) pair'
     findBasinFromLow' pair' Left = pairIfNotWall ([up, down, right] >>= ($ pair')) pair'
 
-star2 :: HeightMap -> Int
-star2 xxs = do
+part2 :: HeightMap -> Int
+part2 xxs = do
     let lowPoints = findLowPoints xxs
     product . take 3 . reverse . sort $
         [length bas | lp <- lowPoints, let bas = findBasinFromLow lp xxs]
 
-run :: IO ()
-run = do
-    xxs <- parseInput
-    let res1 = star1 xxs
-        res2 = star2 xxs
-    putStrLn $ "Day 9 results: [star1: " ++ show res1 ++ "] [star2: " ++ show res2 ++ "]"
+samples :: [Sample]
+samples = [Sample (unlines
+    [ "2199943210"
+    , "3987894921"
+    , "9856789892"
+    , "8767896789"
+    , "9899965678"
+    ]) (Just "15") (Just "1134")]
