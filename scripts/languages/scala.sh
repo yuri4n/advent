@@ -52,11 +52,10 @@ case "${1:-}" in
 package aoc.solutions.y$2
 
 import aoc.{Day, Sample}
-import kyo.{<, IO}
 
 object Day$day extends Day[Long, Long] {
-  def part1(input: String): Long < IO = IO { ??? }
-  def part2(input: String): Long < IO = IO { ??? }
+  def part1(input: String): Long = ???
+  def part2(input: String): Long = ???
 
   // Add inline samples, e.g. Sample("input", expected1 = Some("expected answer")).
   override val samples: Seq[Sample] = Seq.empty

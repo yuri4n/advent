@@ -13,7 +13,8 @@ defmodule Advent.ScaffoldTest do
     source = File.read!(path)
     assert source =~ "defmodule Advent.Y26.D01"
     assert source =~ ~s|raise("TODO: implement part 1")|
-    assert File.read!(Path.join(root, "test/y26/d01_test.exs")) =~ "no samples"
+    assert source =~ "use Advent.Day, year: 2026, day: 1"
+    refute File.exists?(Path.join(root, "test/y26/d01_test.exs"))
     assert {:ok, _} = Code.string_to_quoted(source)
 
     assert_raise ArgumentError, ~r/refusing to overwrite/, fn ->

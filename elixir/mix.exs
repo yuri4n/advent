@@ -6,6 +6,7 @@ defmodule AdventOfCode.MixProject do
       app: :advent,
       version: "0.1.0",
       elixir: "~> 1.14",
+      preferred_cli_env: ["aoc.test": :test],
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]

@@ -23,7 +23,7 @@ rustup component add rust-src rustfmt clippy
 
 If rust-analyzer cannot find the projects when the repository root alone is opened, add `rust/Cargo.toml` and `toolkit/Cargo.toml` as linked Cargo projects in your editor, or open the supplied workspace. The two workspaces serve separate purposes: puzzle crates and the orchestration CLI.
 
-Go has one module, so `go.work` is unnecessary. Open `go/` to give gopls the correct module root. Elixir solutions use compiled `.ex` modules, so Mix and ElixirLS see them without executing standalone scripts.
+Go has one module, so `go.work` is unnecessary. Open `go/` to give gopls the correct module root. Elixir solutions use compiled `.ex` modules with `Advent.Day` declarations, so Mix and ElixirLS see them without executing standalone scripts. The native `mix aoc.run`, `mix aoc.test`, and `mix aoc.new` tasks can be used directly in an editor terminal; see the [Elixir language guide](manual.md#elixir).
 
 Generate Scala's BSP metadata on your own machine:
 
@@ -34,7 +34,7 @@ scala-cli setup-ide . --server=false
 
 Then import or reconnect the build in Metals. Generated `.bsp`, `.scala-build`, and `.metals` files are local machine data; do not commit their absolute paths.
 
-Metals is the recommended Scala setup for the Kyo solutions. Importing the build makes the pinned Scala compiler, Kyo dependency, and compiler options available to the language server. See the [Scala language guide](manual.md#scala) for effect signatures, inline samples, and native test commands. Reimport the build after changing dependency directives.
+Metals is the recommended Scala setup. Importing the build makes the pinned Scala compiler, Kyo dependency, and compiler options available to the language server. Ordinary solutions use pure `Day` functions; `StreamingDay` adds optional Kyo streams and effects. See the [Scala language guide](manual.md#scala) for both APIs, inline samples, and native test commands. Reimport the build after changing dependency directives.
 
 HLS must support your selected GHC version. Build the Cabal project first, then use automatic Cabal discovery. There is no committed `hie.yaml` pointing at a developer's machine.
 

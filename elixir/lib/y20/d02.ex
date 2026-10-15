@@ -1,4 +1,14 @@
 defmodule Advent.Y20.D02 do
+  use Advent.Day, year: 2020, day: 2
+
+  sample """
+         1-3 a: abcde
+         1-3 b: cdefg
+         2-9 c: ccccccccc
+         """,
+         part1: 2,
+         part2: 1
+
   def part1(input) do
     input
     |> parse()

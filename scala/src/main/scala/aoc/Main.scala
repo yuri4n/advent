@@ -1,9 +1,11 @@
 package aoc
 
+import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets.UTF_8
 import kyo.*
 
 private[aoc] object Runner {
-  private def load(year: String, day: String): Day[?, ?] = {
+  private def load(year: String, day: String): Puzzle = {
     require(
       year.matches("[0-9]{4}") && year.toInt >= 2015 && year.toInt <= 2099,
       "year must be 2015..2099"
@@ -14,7 +16,7 @@ private[aoc] object Runner {
     )
     val name = f"aoc.solutions.y${year.toInt}.Day${day.toInt}%02d$$"
     try
-      Class.forName(name).getField("MODULE$").get(null).asInstanceOf[Day[?, ?]]
+      Class.forName(name).getField("MODULE$").get(null).asInstanceOf[Puzzle]
     catch {
       case _: ClassNotFoundException =>
         throw IllegalArgumentException(
@@ -23,20 +25,30 @@ private[aoc] object Runner {
     }
   }
 
-  def answer(
-      day: Day[?, ?],
+  private def answerInput(
+      day: Puzzle,
       part: String,
-      input: String
-  ): String < Day.Effects =
+      input: Input
+  ): String < Puzzle.Effects =
     IO {
-      part match {
-        case "1" => day.part1(input).map(_.toString)
-        case "2" => day.part2(input).map(_.toString)
-        case _   => throw IllegalArgumentException("part must be 1 or 2")
-      }
+      require(part == "1" || part == "2", "part must be 1 or 2")
+      day.answer(part, input)
     }
 
-  def checkSamples(day: Day[?, ?], part: String): Int < Day.Effects =
+  def answer(
+      day: Puzzle,
+      part: String,
+      input: String
+  ): String < Puzzle.Effects =
+    IO {
+      answerInput(
+        day,
+        part,
+        Input.fromStream(new ByteArrayInputStream(input.getBytes(UTF_8)))
+      )
+    }
+
+  def checkSamples(day: Puzzle, part: String): Int < Puzzle.Effects =
     IO {
       require(
         Set("1", "2", "both").contains(part),
@@ -68,14 +80,14 @@ private[aoc] object Runner {
         .map(_.size)
     }
 
-  def program(arguments: List[String]): Unit < Day.Effects =
+  def program(arguments: List[String]): Unit < Puzzle.Effects =
     IO {
       arguments match {
         case List("run", year, day, part)  =>
           for {
             solution <- IO(load(year, day))
-            input    <- IO(scala.io.Source.stdin.mkString)
-            value    <- answer(solution, part, input)
+            input    <- IO(Input.fromStream(java.lang.System.in))
+            value    <- answerInput(solution, part, input)
             _        <- Console.printLine(value)
           } yield ()
         case List("test", year, day)       => program(List("test", year, day, "both"))

@@ -139,19 +139,41 @@ go run ./cmd/aoc 2020 1 1 < ../data/y20/d01/input.txt
 
 ### Elixir
 
-A day lives at `elixir/lib/yYY/dDD.ex` in a module such as `Advent.Y20.D02`. Implement `part1(input)` and `part2(input)` with optional ordinary parsing helpers. New modules raise until implemented.
+A day lives at `elixir/lib/yYY/dDD.ex` in a module such as `Advent.Y20.D02`. Use `Advent.Day` to declare the year/day and inline samples, and keep `part1(input)` and `part2(input)` as ordinary pure functions. Parsing helpers are optional. The generated module is unfinished:
 
-Put a heredoc fixture in `test/yYY/dDD_test.exs` and test it with ExUnit. Tag each part's assertions with `@tag :part1` or `@tag :part2` to support CLI selection; see [the migrated day 2 tests](../elixir/test/y20/d02_test.exs).
+```elixir
+defmodule Advent.Y26.D01 do
+  use Advent.Day, year: 2026, day: 1
+
+  def part1(_input), do: raise("TODO: implement part 1")
+  def part2(_input), do: raise("TODO: implement part 2")
+end
+```
+
+Add a `sample` declaration inside that module with real puzzle input and expected answers:
+
+```elixir
+sample "sample input", part1: "expected answer"
+```
+
+Expected answers can use the same value types as the part functions, for example an integer. Omit `part2:` until that part is ready, then add its expectation to the same sample or another declaration. Heredocs work for multiline samples; see [the migrated day 2](../elixir/lib/y20/d02.ex). The shared ExUnit suite discovers the declarations, so each day needs only its solution module. `mix test` checks the supplied expectations together with the harness tests, so part 2 can remain unfinished while working on part 1. A day with no expectations fails explicitly. `mix aoc.test --part both` requires expectations for both parts; use `--part 1` while only that part is ready.
+
+The native Mix tasks use the same year/day/part selection as the root CLI. `aoc.run` reads the central `data/yYY/dDD/input.txt` by default; use `--input PATH` to select another file or `--stdin` to pipe input:
 
 ```sh
 cd elixir
-mix test test/y20/d02_test.exs --only part1
-mix aoc 2020 2 1 < ../data/y20/d02/input.txt
+mix aoc.new 2026 1
+mix aoc.test 2020 2 --part 1
+mix aoc.run 2020 2 --part 1
+mix aoc.run 2020 2 --part 1 --stdin < ../data/y20/d02/input.txt
+mix test
 ```
+
+`mix aoc.new` creates one module containing the unfinished part functions and a commented sample declaration. `./aoc new`, `./aoc run`, and `./aoc test` remain available from the repository root.
 
 ### Scala
 
-A day lives at `scala/src/main/scala/aoc/solutions/yYYYY/DayDD.scala`. Its object extends `Day[Part1, Part2]`, where the type parameters describe the two answers. The scaffold starts with `Long` for both; change either type to match your answer, for example `Day[Int, String]`.
+A day lives at `scala/src/main/scala/aoc/solutions/yYYYY/DayDD.scala`. Its object extends `Day[Part1, Part2]` and implements ordinary functions from input text to answers. The scaffold starts with `Long` for both answers; change either type to match your result, for example `Day[Int, String]`.
 
 Scala uses [Kyo 0.19.0](https://github.com/getkyo/kyo/tree/v0.19.0), pinned alongside Scala 3.7.3 in [project.scala](../scala/project.scala). Consult that version's API: it uses `IO` and `Resource`, while newer Kyo examples may use different names. The project enables Kyo's recommended value-discard checks and strict equality.
 
@@ -161,18 +183,15 @@ The generated solution is deliberately unfinished:
 package aoc.solutions.y2026
 
 import aoc.{Day, Sample}
-import kyo.{<, IO}
 
 object Day01 extends Day[Long, Long] {
-  def part1(input: String): Long < IO = IO { ??? }
-  def part2(input: String): Long < IO = IO { ??? }
+  def part1(input: String): Long = ???
+  def part2(input: String): Long = ???
   override val samples: Seq[Sample] = Seq.empty
 }
 ```
 
-`Long < IO` describes a computation that produces a `Long` with the `IO` effect. Keep each part's work inside `IO { ... }` so it runs when the harness evaluates it. Parsing and algorithm helpers can remain ordinary pure functions called inside that block; there is no mandatory parse interface. See [the migrated day 1](../scala/src/main/scala/aoc/solutions/y2021/Day01.scala) for a complete example.
-
-Simple solutions only need `IO`. When useful, a part can declare `Answer < Day.Effects`, which allows `Async`, `Abort[Throwable]`, and `Resource`. The shared Kyo application handles those effects, reads input, and prints answers. Handle any additional effects or different error types before returning from the part. Keep effect runners and unsafe execution out of solution files. Typed failures and thrown exceptions reach the shared error boundary, which reports the failure on stderr and exits unsuccessfully.
+The shared Kyo application reads input, calls the part function, and prints its answer. Solution files need no Kyo imports for ordinary puzzle logic. Use `input.linesIterator` when line iteration is convenient; the standard `Day` input is already a buffered string. Parsing and algorithm helpers stay ordinary pure functions, with no mandatory parse interface. See [the migrated day 1](../scala/src/main/scala/aoc/solutions/y2021/Day01.scala) for a complete example.
 
 Add inline samples to the object:
 
@@ -203,6 +222,35 @@ scala-cli run . --server=false --main-class aoc.Main -- run 2021 1 1 < ../data/y
 ```
 
 For completion and diagnostics, import the Scala CLI build in Metals using the [BSP setup instructions](editors.md#project-roots-and-language-servers).
+
+#### Streaming input and effects
+
+For input streaming or effectful work, opt in to `StreamingDay[Part1, Part2]`. Its part functions receive `aoc.Input` and return `Answer < aoc.Puzzle.Effects`. That effect set permits `Async`, `Abort[Throwable]`, and `Resource`; a part may declare fewer effects, such as `Answer < IO`. The runner evaluates the computation and handles those effects. Handle any additional effects or different error types before returning, and keep effect runners and unsafe execution out of solution files. Both ordinary thrown exceptions and typed failures reach the shared error boundary, which reports the failure on stderr and exits unsuccessfully.
+
+`Input` provides three ways to consume the source:
+
+| Access | Result | Behavior |
+| --- | --- | --- |
+| `input.text` | `String < IO` | Buffer the complete UTF-8 input. |
+| `input.lines` | `Stream[String, IO]` | Decode UTF-8 and read lines as the stream is consumed. |
+| `input.bytes` | `Stream[Byte, IO]` | Stream raw bytes using 4 KiB reads. |
+
+This small API example counts lines and bytes; it is not a puzzle solution or the generated template:
+
+```scala
+import aoc.{Input, StreamingDay}
+import kyo.{<, IO}
+
+object InputCounts extends StreamingDay[Long, Long] {
+  def part1(input: Input): Long < IO =
+    input.lines.fold(0L)((count, _) => count + 1L)
+
+  def part2(input: Input): Long < IO =
+    input.bytes.fold(0L)((count, _) => count + 1L)
+}
+```
+
+Each `Input` can be consumed once: choose text, lines, or bytes. The runner provides fresh input for each part and sample. Line streaming removes line terminators, including LF, CRLF, and lone CR, preserves interior empty lines, and does not invent an extra empty line after a final terminator. It uses bounded read-ahead, but a very long line still needs memory proportional to that line. The runner leaves borrowed standard input open. Inline `Sample` declarations and the CLI commands work for both `Day` and `StreamingDay`.
 
 ### Haskell
 
