@@ -7,7 +7,7 @@
 | Real inputs | Keep local copies in ignored central `data/yYY/dDD/input.txt`; fetch your own input. |
 | CLI | Rust binary behind the root `aoc` launcher. |
 | Build tools | Cargo, Go modules, Mix, Scala CLI, and Cabal. |
-| Scala effects | Pure day functions by default; optional Kyo streaming/effects with a shared application boundary. |
+| Scala effects | Effect-free Kyo computations by default; optional bounded parallelism, effects, and streaming with a shared application boundary. |
 | Existing solutions | Move them onto the shared run/test contract while retaining their algorithms and unfinished parts. |
 | Languages | Five built-in adapters, plus `add-language` for a custom command/template registration. |
 | Samples | Inline native samples/tests rather than a mandatory shared answers file. |
@@ -32,7 +32,7 @@ Real input is independent of the implementation language. Native adapters consum
 
 Inline samples keep the input and expected answer close to the code being checked. Only supplied expectations are assertions. Selecting an unfinished part or a day with no relevant sample assertions must not be interpreted as successful validation.
 
-Scala days implement `Day[Part1, Part2]` with pure functions from `String` to answers. The shared `KyoApp` owns input and evaluation; ordinary solution files need no Kyo imports. `StreamingDay[Part1, Part2]` opts into single-pass `Input` access through buffered text, UTF-8 line streams, or raw byte streams. The runner supplies fresh input for each part and sample, and leaves borrowed standard input open. Streaming parts may use `Async`, `Abort[Throwable]`, and `Resource`, handled at the application boundary. Successful runs print only the answer to stdout; typed failures and exceptions go to stderr with a nonzero exit status. Scala 3.7.3 and Kyo 0.19.0 are pinned together in `scala/project.scala`.
+Scala days implement `Day[Part1, Part2]` with functions from `String` to Kyo computations. The default `Answer < Any` annotation permits an ordinary pure expression without an `IO` wrapper, while parsing and algorithm helpers return plain values. A part may opt into `Async`, `Abort[Throwable]`, and `Resource`, including bounded parallel work, without changing its input shape. The shared `KyoApp` owns input and evaluation. `StreamingDay[Part1, Part2]` offers the same effect capabilities with single-pass `Input` access through buffered text, UTF-8 line streams, or raw byte streams. The runner supplies fresh input for each part and sample, and leaves borrowed standard input open. Successful runs print only the answer to stdout; typed failures and exceptions go to stderr with a nonzero exit status. Scala 3.7.3 and Kyo 0.19.0 are pinned together in `scala/project.scala`.
 
 The toolkit does not infer puzzle answers, fill in missing algorithms, or submit results. `new` creates explicit unfinished stubs.
 
@@ -73,7 +73,7 @@ Moving a real input out of tracked files preserves its local content under `data
 
 On 2026-10-15, the migration passed `./scripts/check.sh` across all five languages: 19 migrated sample assertions, 14 toolkit tests, and 10 Rust workspace tests, alongside the Go, Elixir, Cabal, and Scala checks. CLI scaffolding was checked in temporary copies for each language: registration and compilation succeeded, duplicate generation preserved existing files, and unfinished runs or empty sample suites failed as expected.
 
-The current Scala and Elixir APIs were also checked separately: all 19 Scala harness tests and 10 Elixir tests pass. Scala's packaged runner passes all six existing sample assertions and preserves all six recorded real-input answers. Scratch CLI checks cover pure Scala templates, streaming discovery, UTF-8 lines, arbitrary raw bytes, missing samples, unfinished stubs, and overwrite refusal. Elixir scratch checks cover compile-time sample declarations, native Mix tasks, central input defaults, single-file scaffolding, partial-part development, assertion failures, and overwrite protection. Both languages pass root CLI run/test checks; their format checks pass.
+The current Scala and Elixir APIs were also checked separately: all 19 Scala harness tests and 10 Elixir tests pass. Scala coverage includes pure values, bounded parallel execution on ordinary text-based days, typed failures, and resource cleanup. Scala's packaged runner passes all six existing sample assertions and preserves all six recorded real-input answers. Scratch CLI checks cover pure Scala templates, ordinary-day parallel computations with pure callbacks, streaming discovery, UTF-8 lines, arbitrary raw bytes, missing samples, unfinished stubs, and overwrite refusal. Elixir scratch checks cover compile-time sample declarations, native Mix tasks, central input defaults, single-file scaffolding, partial-part development, assertion failures, and overwrite protection. Both languages pass root CLI run/test checks; their format checks pass.
 
 Mocked download/cache tests passed. Live puzzle download in the onboarding environment was blocked by a proxy `CONNECT 403`; access to `adventofcode.com` needs to be enabled and retried. Authenticated live input fetching was not tested because `AOC_SESSION` was not set. Interactive editor testing is described separately in [the editor guide](editors.md#what-is-verified).
 

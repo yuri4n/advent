@@ -1,14 +1,15 @@
 package aoc.solutions.y2021
 
 import aoc.{Day, Sample}
+import kyo.<
 import scala.annotation.tailrec
 
 object Day01 extends Day[Int, Int] {
-  def part1(input: String): Int = {
+  def part1(input: String): Int < Any = {
     countIncreases(input.linesIterator.map(_.toInt).toVector)
   }
 
-  def part2(input: String): Int = {
+  def part2(input: String): Int < Any = {
     countIncreases(mapTriples(input.linesIterator.map(_.toInt).toVector))
   }
 

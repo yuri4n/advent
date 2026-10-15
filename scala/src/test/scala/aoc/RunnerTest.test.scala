@@ -1,5 +1,6 @@
 package aoc
 
+import java.util.concurrent.atomic.AtomicInteger
 import kyo.*
 
 class RunnerTest extends munit.FunSuite {
@@ -8,19 +9,20 @@ class RunnerTest extends munit.FunSuite {
     KyoApp.Unsafe.runAndBlock(5.seconds)(Abort.catching[Throwable](value))
   }
 
-  test("pure solutions work directly and the runner defers their invocation") {
-    var requested = 0
-    val day       = new Day[Int, String] {
-      def part1(input: String): Int    = {
+  test(
+    "pure bodies need no IO wrapper and the runner defers their invocation"
+  ) {
+    def nextNumber(input: String): Int = input.toInt + 1
+    assertEquals(nextNumber("41"), 42)
+    var requested                      = 0
+    val day                            = new Day[Int, String] {
+      def part1(input: String): Int < Any    = {
         requested += 1
-        input.toInt + 1
+        nextNumber(input)
       }
-      def part2(input: String): String = s"answer: $input"
+      def part2(input: String): String < Any = s"answer: $input"
     }
-    assertEquals(day.part1("41"), 42)
-    assertEquals(day.part2("text"), "answer: text")
-    requested = 0
-    val answer    = Runner.answer(day, "1", "41")
+    val answer                         = Runner.answer(day, "1", "41")
     assertEquals(requested, 0)
     assertEquals(run(answer).getOrThrow, "42")
     assertEquals(requested, 1)
@@ -58,24 +60,54 @@ class RunnerTest extends munit.FunSuite {
     )
   }
 
-  test("streaming solutions await asynchronous computations") {
-    val day = new StreamingDay[Long, Long] {
-      def part1(input: Input): Long < Async =
-        input.text.flatMap(text => Async.delay(1.millis)(IO(text.toLong + 1)))
-      def part2(input: Input): Long < IO    = input.text.map(_ => 0L)
+  test(
+    "ordinary days support bounded parallel effects without streaming input"
+  ) {
+    val active  = new AtomicInteger(0)
+    val maximum = new AtomicInteger(0)
+    val day     = new Day[Long, Long] {
+      def part1(input: String): Long < Async =
+        Barrier.init(2).flatMap { barrier =>
+          Async
+            .foreach(
+              input.linesIterator.map(_.toLong).toVector,
+              concurrency = 2
+            ) { number =>
+              for {
+                _     <- IO {
+                           val count = active.incrementAndGet()
+                           assert(count <= 2)
+                           maximum.accumulateAndGet(
+                             count,
+                             (before, current) => math.max(before, current)
+                           )
+                         }
+                // The first worker cannot finish until a second worker overlaps.
+                _     <- barrier.await
+                value <- IO {
+                           val remaining = active.decrementAndGet()
+                           assert(remaining >= 0)
+                           number
+                         }
+              } yield value
+            }
+            .map(_.sum)
+        }
+      def part2(input: String): Long < Any   = 0L
     }
     assertEquals(
-      run(Runner.answer(day, "1", "2147483648")).getOrThrow,
-      "2147483649"
+      run(Runner.answer(day, "1", "2147483648\n1\n2\n3")).getOrThrow,
+      "2147483654"
     )
+    assertEquals(maximum.get(), 2)
+    assertEquals(active.get(), 0)
   }
 
-  test("streaming typed Abort failures reach the runtime boundary") {
+  test("ordinary-day typed Abort failures reach the runtime boundary") {
     val failure = IllegalArgumentException("invalid puzzle input")
-    val day     = new StreamingDay[Int, Int] {
-      def part1(input: Input): Int < (IO & Abort[Throwable]) =
-        input.text.flatMap(_ => Abort.fail(failure))
-      def part2(input: Input): Int < IO                      = input.text.map(_ => 0)
+    val day     = new Day[Int, Int] {
+      def part1(input: String): Int < Abort[Throwable] = Abort.fail(failure)
+      def part2(input: String): Int < Any              = 0
     }
     val result  = run(Runner.answer(day, "1", "invalid"))
     assert(result.isFailure)
@@ -85,8 +117,8 @@ class RunnerTest extends munit.FunSuite {
 
   test("pure parse errors and unfinished stubs remain failures") {
     val day        = new Day[Int, Int] {
-      def part1(input: String): Int = input.toInt
-      def part2(input: String): Int = ???
+      def part1(input: String): Int < Any = input.toInt
+      def part2(input: String): Int < Any = ???
     }
     val parseError = intercept[NumberFormatException](
       run(Runner.answer(day, "1", "invalid")).getOrThrow
@@ -101,15 +133,15 @@ class RunnerTest extends munit.FunSuite {
   test("pure samples sequence both parts and honor selection") {
     var calls = Vector.empty[String]
     val day   = new Day[Int, Long] {
-      def part1(input: String): Int  = {
+      def part1(input: String): Int < Any  = {
         calls = calls :+ s"1:$input"
         input.toInt
       }
-      def part2(input: String): Long = {
+      def part2(input: String): Long < Any = {
         calls = calls :+ s"2:$input"
         input.toLong * 10
       }
-      override val samples           = Seq(
+      override val samples                 = Seq(
         Sample("2", Some("2"), Some("20")),
         Sample("3", Some("3"))
       )
@@ -124,12 +156,12 @@ class RunnerTest extends munit.FunSuite {
   test("sample mismatches identify the sample and stop further execution") {
     var executed = 0
     val day      = new Day[Int, Int] {
-      def part1(input: String): Int = {
+      def part1(input: String): Int < Any = {
         executed += 1
         input.toInt
       }
-      def part2(input: String): Int = 0
-      override val samples          = Seq(Sample("2", Some("3")), Sample("4", Some("4")))
+      def part2(input: String): Int < Any = 0
+      override val samples                = Seq(Sample("2", Some("3")), Sample("4", Some("4")))
     }
     val error    = intercept[IllegalArgumentException](
       run(Runner.checkSamples(day, "1")).getOrThrow
@@ -140,9 +172,9 @@ class RunnerTest extends munit.FunSuite {
 
   test("testing both requires expectations for both parts") {
     val day = new Day[Int, Int] {
-      def part1(input: String): Int = 1
-      def part2(input: String): Int = 2
-      override val samples          = Seq(Sample("", Some("1")))
+      def part1(input: String): Int < Any = 1
+      def part2(input: String): Int < Any = 2
+      override val samples                = Seq(Sample("", Some("1")))
     }
     assertEquals(run(Runner.checkSamples(day, "1")).getOrThrow, 1)
     for (selection <- Seq("2", "both")) {
@@ -155,14 +187,12 @@ class RunnerTest extends munit.FunSuite {
     }
   }
 
-  test(
-    "streaming resource finalizers run after successful and failed solutions"
-  ) {
+  test("ordinary-day resource finalizers run after success and failure") {
     var released = 0
-    val day      = new StreamingDay[Int, Int] {
-      def part1(input: Input): Int < (Resource & IO) =
-        Resource.ensure(IO { released += 1 }).andThen(input.text.map(_.toInt))
-      def part2(input: Input): Int < IO              = input.text.map(_ => 0)
+    val day      = new Day[Int, Int] {
+      def part1(input: String): Int < (Resource & IO) =
+        Resource.ensure(IO { released += 1 }).andThen(IO(input.toInt))
+      def part2(input: String): Int < Any             = 0
     }
     assertEquals(run(Runner.answer(day, "1", "42")).getOrThrow, "42")
     assertEquals(released, 1)
@@ -197,10 +227,10 @@ class RunnerTest extends munit.FunSuite {
     "unselected failing parts are never invoked for pure or streaming solutions"
   ) {
     val pure      = new Day[Int, Int] {
-      def part1(input: String): Int = input.toInt
-      def part2(input: String): Int =
+      def part1(input: String): Int < Any = input.toInt
+      def part2(input: String): Int < Any =
         throw IllegalArgumentException("unselected pure part")
-      override val samples          = Seq(Sample("7", Some("7"), Some("unused")))
+      override val samples                = Seq(Sample("7", Some("7"), Some("unused")))
     }
     val streaming = new StreamingDay[Int, Int] {
       def part1(input: Input): Int < IO               = input.text.map(_.toInt)

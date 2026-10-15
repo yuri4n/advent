@@ -1,16 +1,17 @@
 package aoc.solutions.y2021
 
 import aoc.{Day, Sample}
+import kyo.<
 
 object Day02 extends Day[Int, Int] {
   type InstructionLine = (Instruction, Int)
 
-  def part1(input: String): Int = {
+  def part1(input: String): Int < Any = {
     val pos = findPos(parse(input))
     pos._1 * pos._2
   }
 
-  def part2(input: String): Int = {
+  def part2(input: String): Int < Any = {
     val pos = findPosWithAim(parse(input))
     pos._1 * pos._2
   }

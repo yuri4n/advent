@@ -1,6 +1,7 @@
 package aoc.solutions.y2021
 
 import aoc.{Day, Sample}
+import kyo.<
 
 object Day03 extends Day[Int, Int] {
   type Binary = Seq[Byte]
@@ -8,12 +9,12 @@ object Day03 extends Day[Int, Int] {
   def parse(input: String): Seq[Binary] =
     input.linesIterator.map(_.map(_.asDigit.toByte).toSeq).toVector
 
-  def part1(input: String): Int = {
+  def part1(input: String): Int < Any = {
     val gamma = genGamma(parse(input).transpose)
     binaryToInt(gamma) * binaryToInt(genEpsilon(gamma))
   }
 
-  def part2(input: String): Int = {
+  def part2(input: String): Int < Any = {
     val binaries      = parse(input)
     val processedList = binaries.transpose
     binaryToInt(genOxygenRating(processedList, binaries)) *

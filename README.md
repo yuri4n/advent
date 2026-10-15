@@ -31,5 +31,5 @@ Open [advent.code-workspace](advent.code-workspace) for optional VS Code integra
 | Rust | [rust/](rust/) | Cargo; one crate per year | [Rust guide](docs/manual.md#rust) |
 | Go | [go/](go/) | Go modules | [Go guide](docs/manual.md#go) |
 | Elixir | [elixir/](elixir/) | Mix tasks and sample macros | [Elixir guide](docs/manual.md#elixir) |
-| Scala | [scala/](scala/) | Scala CLI; pure solutions, Kyo runner | [Scala guide](docs/manual.md#scala) |
+| Scala | [scala/](scala/) | Scala CLI and Kyo; optional parallelism and streaming | [Scala guide](docs/manual.md#scala) |
 | Haskell | [haskell/](haskell/) | Cabal | [Haskell guide](docs/manual.md#haskell) |

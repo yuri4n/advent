@@ -173,7 +173,7 @@ mix test
 
 ### Scala
 
-A day lives at `scala/src/main/scala/aoc/solutions/yYYYY/DayDD.scala`. Its object extends `Day[Part1, Part2]` and implements ordinary functions from input text to answers. The scaffold starts with `Long` for both answers; change either type to match your result, for example `Day[Int, String]`.
+A day lives at `scala/src/main/scala/aoc/solutions/yYYYY/DayDD.scala`. Its object extends `Day[Part1, Part2]`, receives input text, and returns Kyo computations with typed answers. The scaffold starts with `Long` for both answers; change either type to match your result, for example `Day[Int, String]`.
 
 Scala uses [Kyo 0.19.0](https://github.com/getkyo/kyo/tree/v0.19.0), pinned alongside Scala 3.7.3 in [project.scala](../scala/project.scala). Consult that version's API: it uses `IO` and `Resource`, while newer Kyo examples may use different names. The project enables Kyo's recommended value-discard checks and strict equality.
 
@@ -183,15 +183,18 @@ The generated solution is deliberately unfinished:
 package aoc.solutions.y2026
 
 import aoc.{Day, Sample}
+import kyo.<
 
 object Day01 extends Day[Long, Long] {
-  def part1(input: String): Long = ???
-  def part2(input: String): Long = ???
+  def part1(input: String): Long < Any = ???
+  def part2(input: String): Long < Any = ???
   override val samples: Seq[Sample] = Seq.empty
 }
 ```
 
-The shared Kyo application reads input, calls the part function, and prints its answer. Solution files need no Kyo imports for ordinary puzzle logic. Use `input.linesIterator` when line iteration is convenient; the standard `Day` input is already a buffered string. Parsing and algorithm helpers stay ordinary pure functions, with no mandatory parse interface. See [the migrated day 1](../scala/src/main/scala/aoc/solutions/y2021/Day01.scala) for a complete example.
+`Answer < Any` means an effect-free Kyo computation. Write an ordinary expression as the function body: Kyo lifts its value automatically, so pure solutions need no `IO` wrapper. Keep the return annotation `Answer < Any`; a plain `Answer` return annotation cannot override the `Day` contract. Parsing and algorithm helpers remain ordinary functions returning plain values, with no mandatory parse interface. See [the migrated day 1](../scala/src/main/scala/aoc/solutions/y2021/Day01.scala) for a complete example.
+
+The shared Kyo application reads input, evaluates the computation, and prints its answer. Use `input.linesIterator` when line iteration is convenient; the standard `Day` input is already a buffered string. Either part can opt into effects by declaring `Answer < aoc.Puzzle.Effects`, which permits `Async`, `Abort[Throwable]`, and `Resource`, or a narrower effect type. Both ordinary thrown exceptions and typed failures reach the shared error boundary, which reports the failure on stderr and exits unsuccessfully.
 
 Add inline samples to the object:
 
@@ -223,9 +226,27 @@ scala-cli run . --server=false --main-class aoc.Main -- run 2021 1 1 < ../data/y
 
 For completion and diagnostics, import the Scala CLI build in Metals using the [BSP setup instructions](editors.md#project-roots-and-language-servers).
 
-#### Streaming input and effects
+#### Optional parallel work
 
-For input streaming or effectful work, opt in to `StreamingDay[Part1, Part2]`. Its part functions receive `aoc.Input` and return `Answer < aoc.Puzzle.Effects`. That effect set permits `Async`, `Abort[Throwable]`, and `Resource`; a part may declare fewer effects, such as `Answer < IO`. The runner evaluates the computation and handles those effects. Handle any additional effects or different error types before returning, and keep effect runners and unsafe execution out of solution files. Both ordinary thrown exceptions and typed failures reach the shared error boundary, which reports the failure on stderr and exits unsuccessfully.
+An ordinary `Day` can use Kyo's bounded parallel traversal when expensive work on separate items is independent. This small API example counts characters across lines; inside a day object:
+
+```scala
+import aoc.Puzzle
+import kyo.{<, Async}
+
+def part1(input: String): Long < Puzzle.Effects =
+  Async.foreach(input.linesIterator.toVector, concurrency = 4)(line =>
+    line.length.toLong
+  ).map(_.sum)
+```
+
+The callback can return a pure value directly; `Async.foreach` handles scheduling. `concurrency = 4` bounds the number in flight. Choose a limit that fits the workload and available CPUs; scheduling overhead can make small calculations such as this count slower. Use parallelism when the independent calculation is expensive enough to benefit. The default scaffold stays effect-free until this is useful.
+
+The runner handles supported effects for both `Day` and `StreamingDay`. Handle any additional effects or different error types before returning, and keep effect runners and unsafe execution out of solution files.
+
+#### Streaming input
+
+Use `StreamingDay[Part1, Part2]` when a part needs an input stream. It has the same effect capabilities as `Day`, with `aoc.Input` as the argument in place of `String`. Parts return `Answer < aoc.Puzzle.Effects` or a narrower type, such as `Answer < IO`.
 
 `Input` provides three ways to consume the source:
 
