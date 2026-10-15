@@ -22,12 +22,14 @@ Real puzzle inputs live in ignored `data/yYY/dDD/input.txt` files. Existing loca
 - [Editors and IDEs](docs/editors.md): project roots, language servers, formatting, run/test tasks, and debugging.
 - [Design and migration](docs/architecture.md): accepted decisions, data contract, existing solutions, and limitations.
 
+The documentation is maintained as Markdown in this repository; there is no published documentation website yet. The language guides below describe each language's solution shape, sample checks, and native commands.
+
 Open [advent.code-workspace](advent.code-workspace) for optional VS Code integration, or open the language project in your preferred editor. The build metadata is the source of truth; no editor is required.
 
-| Language | Project | Build tool |
-| --- | --- | --- |
-| Rust | [rust/](rust/) | Cargo; one crate per year |
-| Go | [go/](go/) | Go modules |
-| Elixir | [elixir/](elixir/) | Mix |
-| Scala | [scala/](scala/) | Scala CLI |
-| Haskell | [haskell/](haskell/) | Cabal |
+| Language | Project | Build tool | Instructions |
+| --- | --- | --- | --- |
+| Rust | [rust/](rust/) | Cargo; one crate per year | [Rust guide](docs/manual.md#rust) |
+| Go | [go/](go/) | Go modules | [Go guide](docs/manual.md#go) |
+| Elixir | [elixir/](elixir/) | Mix | [Elixir guide](docs/manual.md#elixir) |
+| Scala | [scala/](scala/) | Scala CLI with Kyo | [Scala guide](docs/manual.md#scala) |
+| Haskell | [haskell/](haskell/) | Cabal | [Haskell guide](docs/manual.md#haskell) |

@@ -10,7 +10,7 @@ The repository supplies native project metadata, shared formatting defaults, and
 | Rust toolkit | `toolkit/Cargo.toml` | rust-analyzer or a Cargo-aware Rust IDE | `cargo fmt` |
 | Go | `go/` with `go.mod` | gopls or GoLand | `gofmt` |
 | Elixir | `elixir/` with `mix.exs` | ElixirLS or an Elixir IDE plugin | `mix format` |
-| Scala | `scala/` with `project.scala` | Metals/BSP or a compatible Scala IDE | `scala-cli fmt .` |
+| Scala | `scala/` with `project.scala` | Metals with Scala CLI's BSP server | `scala-cli fmt .` |
 | Haskell | `haskell/` with `cabal.project` | Haskell Language Server | Fourmolu using `fourmolu.yaml` |
 
 Formatting commands run inside the corresponding project. `.editorconfig` defines shared indentation and newline conventions; native formatters decide language syntax formatting.
@@ -33,6 +33,8 @@ scala-cli setup-ide . --server=false
 ```
 
 Then import or reconnect the build in Metals. Generated `.bsp`, `.scala-build`, and `.metals` files are local machine data; do not commit their absolute paths.
+
+Metals is the recommended Scala setup for the Kyo solutions. Importing the build makes the pinned Scala compiler, Kyo dependency, and compiler options available to the language server. See the [Scala language guide](manual.md#scala) for effect signatures, inline samples, and native test commands. Reimport the build after changing dependency directives.
 
 HLS must support your selected GHC version. Build the Cabal project first, then use automatic Cabal discovery. There is no committed `hie.yaml` pointing at a developer's machine.
 
@@ -69,7 +71,7 @@ Use the actual checkout path only in your local editor settings; committed confi
 
 ## JetBrains tools
 
-Open the Cargo project in a Rust-capable IDE, `go/` in GoLand, and the corresponding native project for other supported language plugins. Scala requires an IDE/plugin that can import the Scala CLI/BSP project; plugin compatibility varies by IDE version. Use the terminal command or an external tool pointing at `aoc` when an IDE has no matching run configuration.
+Open the Cargo project in a Rust-capable IDE, `go/` in GoLand, and the corresponding native project for other supported language plugins. Scala requires an IDE/plugin that can import the Scala CLI/BSP project; plugin compatibility varies by IDE version. IntelliJ's analysis of Kyo effect types and macros has not been validated here; use Metals for the recommended Scala integration, and the Scala CLI compiler to check diagnostics. Use the terminal command or an external tool pointing at `aoc` when an IDE has no matching run configuration.
 
 ## Debugging
 

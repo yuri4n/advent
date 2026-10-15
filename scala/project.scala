@@ -1,3 +1,8 @@
 //> using scala "3.7.3"
 //> using jvm "system"
+//> using dep "io.getkyo::kyo-core:0.19.0"
+//> using test.dep "org.scalameta::munit:1.3.6"
 //> using options "-deprecation" "-feature" "-unchecked"
+//> using options "-Wvalue-discard" "-Wnonunit-statement"
+//> using options "-Wconf:msg=(unused.*value|discarded.*value|pure.*statement):error"
+//> using options "-language:strictEquality"

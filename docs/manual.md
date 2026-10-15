@@ -1,5 +1,7 @@
 # Developer manual
 
+Language guides: [Rust](#rust) · [Go](#go) · [Elixir](#elixir) · [Scala with Kyo](#scala) · [Haskell](#haskell). See [Editors and IDEs](editors.md) for language servers, formatting, and run/debug setup.
+
 ## Set up the tools
 
 Run commands from the repository root unless a section says otherwise. The `aoc` launcher uses Bash and Cargo; Linux, macOS, and Windows through WSL are the intended shell environments. Rust is required for the CLI even when your solutions use another language.
@@ -99,10 +101,10 @@ Run `./scripts/check.sh` from the repository root to check the toolkit, Rust har
 | `rust/` | `cargo test --workspace --locked` |
 | `go/` | `go test ./...` |
 | `elixir/` | `mix test` |
-| `scala/` | `scala-cli run . --server=false --main-class aoc.Main -- test 2021 1` |
+| `scala/` | `scala-cli test . --server=false` |
 | `haskell/` | `cabal build all`, then `cabal test` |
 
-Haskell's Cabal manifest is maintained directly; Stack and hpack are no longer part of the workflow. Scala uses Scala CLI directives in `project.scala`; sbt is no longer required.
+Haskell's Cabal manifest is maintained directly; Stack and hpack are no longer part of the workflow. Scala uses Scala CLI directives in `project.scala` and Kyo for effects; sbt is no longer required.
 
 ### Rust
 
@@ -149,7 +151,30 @@ mix aoc 2020 2 1 < ../data/y20/d02/input.txt
 
 ### Scala
 
-A day lives at `scala/src/main/scala/aoc/solutions/yYYYY/DayDD.scala`. Its object extends `aoc.Day`, implements `part1(input: String)` and `part2(input: String)`, and supplies inline `samples`. A shared parsing helper is optional. Concrete answer types can be returned because the runner formats the result.
+A day lives at `scala/src/main/scala/aoc/solutions/yYYYY/DayDD.scala`. Its object extends `Day[Part1, Part2]`, where the type parameters describe the two answers. The scaffold starts with `Long` for both; change either type to match your answer, for example `Day[Int, String]`.
+
+Scala uses [Kyo 0.19.0](https://github.com/getkyo/kyo/tree/v0.19.0), pinned alongside Scala 3.7.3 in [project.scala](../scala/project.scala). Consult that version's API: it uses `IO` and `Resource`, while newer Kyo examples may use different names. The project enables Kyo's recommended value-discard checks and strict equality.
+
+The generated solution is deliberately unfinished:
+
+```scala
+package aoc.solutions.y2026
+
+import aoc.{Day, Sample}
+import kyo.{<, IO}
+
+object Day01 extends Day[Long, Long] {
+  def part1(input: String): Long < IO = IO { ??? }
+  def part2(input: String): Long < IO = IO { ??? }
+  override val samples: Seq[Sample] = Seq.empty
+}
+```
+
+`Long < IO` describes a computation that produces a `Long` with the `IO` effect. Keep each part's work inside `IO { ... }` so it runs when the harness evaluates it. Parsing and algorithm helpers can remain ordinary pure functions called inside that block; there is no mandatory parse interface. See [the migrated day 1](../scala/src/main/scala/aoc/solutions/y2021/Day01.scala) for a complete example.
+
+Simple solutions only need `IO`. When useful, a part can declare `Answer < Day.Effects`, which allows `Async`, `Abort[Throwable]`, and `Resource`. The shared Kyo application handles those effects, reads input, and prints answers. Handle any additional effects or different error types before returning from the part. Keep effect runners and unsafe execution out of solution files. Typed failures and thrown exceptions reach the shared error boundary, which reports the failure on stderr and exits unsuccessfully.
+
+Add inline samples to the object:
 
 ```scala
 override val samples = Seq(
@@ -157,14 +182,27 @@ override val samples = Seq(
 )
 ```
 
-Replace the placeholder input and answer with a real puzzle sample. `None` means no assertion for that part; it does not assert an empty answer. New-day stubs use `???`.
+Replace the placeholder input and answer with a real puzzle sample. Expected answers are strings, matching the returned value's `toString`. `None` means no assertion for that part; it does not assert an empty answer. Keep `--part 1` selected until part 2 has an implementation and a sample expectation.
 
-Native execution accepts standard input:
+Use the shared CLI from the repository root:
+
+```sh
+./aoc new 2026 1 --lang scala
+./aoc test 2021 1 --lang scala --part 1
+./aoc run 2021 1 --lang scala --part 1 --time
+./aoc watch 2021 1 --lang scala --part 1
+```
+
+Native execution accepts standard input. Run the MUnit harness tests separately from a selected day's inline samples:
 
 ```sh
 cd scala
+scala-cli test . --server=false
+scala-cli run . --server=false --main-class aoc.Main -- test 2021 1 1
 scala-cli run . --server=false --main-class aoc.Main -- run 2021 1 1 < ../data/y21/d01/input.txt
 ```
+
+For completion and diagnostics, import the Scala CLI build in Metals using the [BSP setup instructions](editors.md#project-roots-and-language-servers).
 
 ### Haskell
 

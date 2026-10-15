@@ -7,6 +7,7 @@
 | Real inputs | Keep local copies in ignored central `data/yYY/dDD/input.txt`; fetch your own input. |
 | CLI | Rust binary behind the root `aoc` launcher. |
 | Build tools | Cargo, Go modules, Mix, Scala CLI, and Cabal. |
+| Scala effects | Kyo with typed answers; shared application boundary handles effects, input, output, and failures. |
 | Existing solutions | Move them onto the shared run/test contract while retaining their algorithms and unfinished parts. |
 | Languages | Five built-in adapters, plus `add-language` for a custom command/template registration. |
 | Samples | Inline native samples/tests rather than a mandatory shared answers file. |
@@ -31,6 +32,8 @@ Real input is independent of the implementation language. Native adapters consum
 
 Inline samples keep the input and expected answer close to the code being checked. Only supplied expectations are assertions. Selecting an unfinished part or a day with no relevant sample assertions must not be interpreted as successful validation.
 
+Scala days implement `Day[Part1, Part2]` with Kyo computations. Ordinary puzzle logic is suspended in `IO`; pure parsing and algorithm helpers stay ordinary Scala functions. The common effect set supports `Async`, `Abort[Throwable]`, and `Resource`, with evaluation owned by the shared `KyoApp`. Successful runs print only the answer to stdout; typed failures and exceptions go to stderr with a nonzero exit status. Scala 3.7.3 and Kyo 0.19.0 are pinned together in `scala/project.scala`.
+
 The toolkit does not infer puzzle answers, fill in missing algorithms, or submit results. `new` creates explicit unfinished stubs.
 
 ## Migration scope
@@ -40,7 +43,7 @@ The old language-specific harnesses used inconsistent file paths and hard-coded 
 - Rust uses year crates with day modules.
 - Go uses day packages in one module.
 - Elixir uses compiled modules inside a Mix project.
-- Scala uses Scala CLI and discoverable year/day objects.
+- Scala uses Scala CLI, Kyo effects, and discoverable year/day objects.
 - Haskell uses Cabal and an explicit registry of modules.
 
 Old solutions can still contain incomplete parts or puzzle-specific assumptions. Migration is not evidence that every historical solution is complete or correct. Consult native sample tests and the validation output for the particular day/part.
@@ -68,7 +71,7 @@ Moving a real input out of tracked files preserves its local content under `data
 
 ## Migration validation
 
-On 2026-10-15, `./scripts/check.sh` passed across all five languages: 19 migrated sample assertions, 14 toolkit tests, and 10 Rust workspace tests, alongside the Go, Elixir, Cabal, and Scala checks. CLI scaffolding was also checked in temporary copies for each language: registration and compilation succeeded, duplicate generation preserved existing files, and unfinished runs or empty sample suites failed as expected.
+On 2026-10-15, `./scripts/check.sh` passed across all five languages: 19 migrated sample assertions, 14 toolkit tests, and 10 Rust workspace tests, alongside the Go, Elixir, Cabal, and Scala checks. CLI scaffolding was also checked in temporary copies for each language: registration and compilation succeeded, duplicate generation preserved existing files, and unfinished runs or empty sample suites failed as expected. The subsequent Scala Kyo conversion adds eight native harness tests for deferred and async execution, typed failures, sample handling, and resource finalization. All six Scala sample answers and all six pre-conversion real-input answers remain unchanged; packaged CLI checks cover Kyo templates, async answers, and failure exit statuses.
 
 Mocked download/cache tests passed. Live puzzle download in the onboarding environment was blocked by a proxy `CONNECT 403`; access to `adventofcode.com` needs to be enabled and retried. Authenticated live input fetching was not tested because `AOC_SESSION` was not set. Interactive editor testing is described separately in [the editor guide](editors.md#what-is-verified).
 
