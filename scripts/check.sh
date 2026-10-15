@@ -9,10 +9,12 @@ cargo test --locked --offline --workspace --manifest-path rust/Cargo.toml
 (cd go && go test -count=1 ./...)
 (cd elixir && mix test)
 (cd haskell && cabal test --offline --test-show-details=direct)
-scala_test_options=()
-[[ "${AOC_OFFLINE:-0}" == 1 ]] && scala_test_options+=(--offline)
-(cd scala && "${SCALA_CLI:-scala-cli}" --power test . --server=false --coursier-validate-checksums "${scala_test_options[@]}")
+# Avoid empty arrays under macOS Bash 3.2 with `set -u`.
+scala_test_option=
+[[ "${AOC_OFFLINE:-0}" == 1 ]] && scala_test_option=--offline
+(cd scala && "${SCALA_CLI:-scala-cli}" --power test . --server=false --coursier-validate-checksums ${scala_test_option:+"$scala_test_option"})
 for day in 1 2 3; do
   bash scripts/languages/scala.sh test 2021 "$day" both
 done
+bash scripts/languages/scala.sh test 2024 1 both
 printf 'Toolkit and all existing inline samples passed.\n'

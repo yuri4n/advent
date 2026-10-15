@@ -64,16 +64,23 @@ The migrated inventory records which parts are implemented. An unfinished part r
 | 2021 / 8 | Rust | [d08.rs](../rust/years/y2021/src/d08.rs) | 1 |
 | 2021 / 9 | Haskell | [Day09.hs](../haskell/src/Year2021/Day09.hs) | 1 and 2 |
 | 2022 / 1 | Rust | [d01.rs](../rust/years/y2022/src/d01.rs) | 2 |
+| 2023 / 1 | Elixir | [d01.ex](../elixir/lib/y23/d01.ex) | 1 and 2 |
+| 2024 / 1 | Scala | [Day01.scala](../scala/src/main/scala/aoc/solutions/y2024/Day01.scala) | 1 and 2 |
+| 2024 / 2 | Scala | [Day02.scala](../scala/src/main/scala/aoc/solutions/y2024/Day02.scala) | None; WIP |
 
 For example, run `./aoc test 2022 1 --lang rust --part 2`. Requesting `--part both` includes the unfinished part 1 and correctly fails rather than presenting a complete suite.
 
 Moving a real input out of tracked files preserves its local content under `data/`. Ignoring or removing it from the current tree does not remove it from existing Git history. This work does not rewrite history or change the repository's visibility.
+
+The local checkpoint integration retains the toolkit layout and ports the saved Elixir 2023 and Scala 2024 additions into its current APIs. It preserves 15 original real-input files as 14 byte-identical central inputs; the two Elixir Day 1 input copies were identical. Unfinished Rust decoder helpers, the former Scala I/O refactor, and an empty Elixir checker are retained as exact source snapshots under [`wip/`](../wip/README.md), outside active build roots. Scala 2024 Day 2 and Rust 2021 Day 8 part 2 remain explicit stubs.
 
 ## Migration validation
 
 On 2026-10-15, the migration passed `./scripts/check.sh` across all five languages: 19 migrated sample assertions, 14 toolkit tests, and 10 Rust workspace tests, alongside the Go, Elixir, Cabal, and Scala checks. CLI scaffolding was checked in temporary copies for each language: registration and compilation succeeded, duplicate generation preserved existing files, and unfinished runs or empty sample suites failed as expected.
 
 The current Scala and Elixir APIs were also checked separately: all 19 Scala harness tests and 10 Elixir tests pass. Scala coverage includes pure values, bounded parallel execution on ordinary text-based days, typed failures, and resource cleanup. Scala's packaged runner passes all six existing sample assertions and preserves all six recorded real-input answers. Scratch CLI checks cover pure Scala templates, ordinary-day parallel computations with pure callbacks, streaming discovery, UTF-8 lines, arbitrary raw bytes, missing samples, unfinished stubs, and overwrite refusal. Elixir scratch checks cover compile-time sample declarations, native Mix tasks, central input defaults, single-file scaffolding, partial-part development, assertion failures, and overwrite protection. Both languages pass root CLI run/test checks; their format checks pass.
+
+For the local checkpoint integration, 15 toolkit tests, 10 Rust workspace tests, the Go packages, 14 Elixir tests, and 21 Scala tests pass. The additional toolkit test covers the Scala launcher's optional offline flag under macOS Bash 3.2. The added regression tests exercise discovery and execution of the saved days and ensure Scala 2024 Day 2 remains unfinished. Haskell was not revalidated locally because GHC and Cabal are not installed; the earlier all-language migration results above are not a fresh Haskell check.
 
 Mocked download/cache tests passed. Live puzzle download in the onboarding environment was blocked by a proxy `CONNECT 403`; access to `adventofcode.com` needs to be enabled and retried. Authenticated live input fetching was not tested because `AOC_SESSION` was not set. Interactive editor testing is described separately in [the editor guide](editors.md#what-is-verified).
 
