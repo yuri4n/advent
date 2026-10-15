@@ -16,10 +16,11 @@ build() {
   command -v "$scala_cli" >/dev/null || fail 'install scala-cli, or set SCALA_CLI to its executable'
   command -v "$java_command" >/dev/null || fail 'install a JDK (17 or newer), or set AOC_JAVA'
   mkdir -p "$(dirname "$jar")"
-  local offline_options=()
-  [[ "${AOC_OFFLINE:-0}" == 1 ]] && offline_options+=(--offline)
+  # Bash 3.2 treats empty arrays as unset under `set -u`.
+  local offline_option=
+  [[ "${AOC_OFFLINE:-0}" == 1 ]] && offline_option=--offline
   (cd "$project" && "$scala_cli" --power package . --assembly --server=false --coursier-validate-checksums \
-    "${offline_options[@]}" --main-class aoc.Main --output "$jar" --force) >&2
+    ${offline_option:+"$offline_option"} --main-class aoc.Main --output "$jar" --force) >&2
 }
 
 case "${1:-}" in
