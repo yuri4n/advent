@@ -24,7 +24,7 @@ fn scala_build_handles_an_unset_or_enabled_offline_option() {
             .env("AOC_ROOT", temp.path())
             .env("SCALA_CLI", &compiler)
             .env("SCALA_ARGS", &arguments)
-            .env("AOC_JAVA", "/usr/bin/true")
+            .env("AOC_JAVA", "true")
             .env_remove("AOC_OFFLINE");
         if offline {
             command.env("AOC_OFFLINE", "1");

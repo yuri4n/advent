@@ -82,6 +82,17 @@ struct Run {
 enum Action {
     /// Create empty solution stubs and register them with the native build tool.
     New(Target),
+    /// Open a solution in Neovim with its project's language server and toolchain.
+    Edit {
+        #[command(flatten)]
+        target: Target,
+        /// Use your own Neovim configuration instead of the repository's setup.
+        #[arg(long)]
+        user_config: bool,
+        /// Use tools already on PATH instead of entering a Nix language shell.
+        #[arg(long)]
+        no_nix: bool,
+    },
     /// Build and run selected puzzle parts against a local input file.
     Run(Run),
     /// Run inline sample assertions for a day.
@@ -221,6 +232,170 @@ fn source_path(root: &Path, lang: &Language, day: &Day) -> PathBuf {
         day.day,
         lang.extension
     ))
+}
+fn editor_paths(root: &Path, lang: &Language, day: &Day) -> Result<(PathBuf, PathBuf)> {
+    if !valid_identifier(&lang.name) || !valid_identifier(&lang.extension) {
+        return Err("language and extension must use lowercase letters, digits, '-' or '_'".into());
+    }
+    let (project, source) = match lang.name.as_str() {
+        "rust" => (
+            root.join("rust"),
+            root.join(format!("rust/years/y{}/src/d{:02}.rs", day.year, day.day)),
+        ),
+        "go" => (
+            root.join("go"),
+            root.join(format!(
+                "go/y{:02}/d{:02}/solution.go",
+                day.year % 100,
+                day.day
+            )),
+        ),
+        "elixir" => (
+            root.join("elixir"),
+            root.join(format!(
+                "elixir/lib/y{:02}/d{:02}.ex",
+                day.year % 100,
+                day.day
+            )),
+        ),
+        "scala" => (
+            root.join("scala"),
+            root.join(format!(
+                "scala/src/main/scala/aoc/solutions/y{}/Day{:02}.scala",
+                day.year, day.day
+            )),
+        ),
+        "haskell" => (
+            root.join("haskell"),
+            root.join(format!("haskell/src/Year{}/Day{:02}.hs", day.year, day.day)),
+        ),
+        _ => (root.to_path_buf(), source_path(root, lang, day)),
+    };
+    if !source.is_file() {
+        return Err(format!(
+            "solution is missing: {}; create it with aoc new {} {} --lang {}",
+            source.display(),
+            day.year,
+            day.day,
+            lang.name
+        )
+        .into());
+    }
+    let source = source.canonicalize()?;
+    let project = project.canonicalize()?;
+    if !source.starts_with(root) || !project.starts_with(root) {
+        return Err("solution and project must stay inside the repository".into());
+    }
+    Ok((project, source))
+}
+fn executable_on_path(name: &str) -> Option<PathBuf> {
+    env::var_os("PATH").and_then(|paths| {
+        env::split_paths(&paths)
+            .map(|path| path.join(name))
+            .find(|path| {
+                let Ok(metadata) = fs::metadata(path) else {
+                    return false;
+                };
+                if !metadata.is_file() {
+                    return false;
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    metadata.permissions().mode() & 0o111 != 0
+                }
+                #[cfg(not(unix))]
+                true
+            })
+            .and_then(|path| path.canonicalize().ok())
+    })
+}
+fn edit(root: &Path, lang: &Language, day: &Day, user_config: bool) -> Result<()> {
+    let (project, source) = editor_paths(root, lang, day)?;
+    let init = root.join("editor/nvim/init.lua");
+    if !user_config && !init.is_file() {
+        return Err(format!(
+            "repository Neovim configuration is missing: {}; use --user-config for your own setup",
+            init.display()
+        )
+        .into());
+    }
+    let nvim = executable_on_path("nvim").ok_or(
+        "Neovim is unavailable; install it or enter the repository's Nix development shell",
+    )?;
+    let mut command = Command::new(nvim);
+    if !user_config {
+        command.arg("-u").arg(init);
+    }
+    command
+        .arg("--")
+        .arg(source)
+        .current_dir(&project)
+        .env("AOC_ROOT", root)
+        .env("AOC_PROJECT_ROOT", &project)
+        .env("AOC_EDITOR_LANGUAGE", &lang.name);
+    let status = command.status()?;
+    if !status.success() {
+        return Err(format!("editor failed ({status})").into());
+    }
+    Ok(())
+}
+fn enter_language_shell(root: &Path, cfg: &Config, action: &Action) -> Result<bool> {
+    let (name, editor) = match action {
+        Action::New(target) | Action::Test { target, .. } => (target.lang.as_str(), false),
+        Action::Run(run) | Action::Watch(run) | Action::Bench { run, .. } => {
+            (run.target.lang.as_str(), false)
+        }
+        Action::Edit { no_nix: true, .. } => return Ok(false),
+        Action::Edit {
+            target,
+            user_config,
+            ..
+        } => {
+            // Reject a missing solution before asking Nix to download a toolchain.
+            let lang = language(cfg, &target.lang)?;
+            editor_paths(root, lang, &target.day)?;
+            if !user_config && !root.join("editor/nvim/init.lua").is_file() {
+                return Ok(false); // edit provides the configuration error.
+            }
+            (target.lang.as_str(), true)
+        }
+        Action::Doctor { lang } => (lang.as_deref().unwrap_or("all"), false),
+        _ => return Ok(false),
+    };
+    let all_languages = matches!(action, Action::Doctor { lang: None });
+    if !all_languages {
+        language(cfg, name)?;
+    }
+    let current = env::var("AOC_NIX_LANGUAGE").ok();
+    if (!editor && current.is_none())
+        || matches!(current.as_deref(), Some("all"))
+        || current.as_deref() == Some(name)
+        || !root.join("flake.nix").is_file()
+        || (!all_languages && !root.join(format!("nix/languages/{name}.nix")).is_file())
+    {
+        return Ok(false);
+    }
+    let Some(nix) = executable_on_path("nix") else {
+        return Ok(false);
+    };
+    let mut flake = root.as_os_str().to_os_string();
+    flake.push(format!("#{name}"));
+    // Re-enter once around the whole action, keeping Nix startup out of benchmarks
+    // and preserving relative --root and --input paths by retaining the caller's cwd.
+    let status = Command::new(nix)
+        .args(["--extra-experimental-features", "nix-command flakes"])
+        .arg("develop")
+        .arg(flake)
+        .arg("--command")
+        .arg(env::current_exe()?)
+        .args(env::args_os().skip(1))
+        .env("AOC_ROOT", root)
+        .status()?;
+    if !status.success() {
+        return Err(format!("Nix language shell failed ({status})").into());
+    }
+    Ok(true)
 }
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
@@ -410,6 +585,9 @@ fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
 fn execute(cli: Cli) -> Result<()> {
     let root = root_path(cli.root)?;
     let mut cfg = config(&root)?;
+    if enter_language_shell(&root, &cfg, &cli.command)? {
+        return Ok(());
+    }
     match cli.command {
         Action::New(target) => {
             let lang = language(&cfg, &target.lang)?;
@@ -431,6 +609,16 @@ fn execute(cli: Cli) -> Result<()> {
             fs::create_dir_all(data_dir(&root, &target.day))?;
         }
         Action::Run(run) => run_once(&root, language(&cfg, &run.target.lang)?, &run)?,
+        Action::Edit {
+            target,
+            user_config,
+            ..
+        } => edit(
+            &root,
+            language(&cfg, &target.lang)?,
+            &target.day,
+            user_config,
+        )?,
         Action::Test { target, part } => {
             let lang = language(&cfg, &target.lang)?;
             if lang.adapter.is_none() {
@@ -562,7 +750,9 @@ fn execute(cli: Cli) -> Result<()> {
                 cfg.languages.iter().collect()
             };
             let mut failed = false;
-            for name in ["cargo", "curl"] {
+            // The packaged CLI does not require Rust in another language's shell.
+            // Rust's adapter checks cargo and rustc when Rust is selected.
+            for name in ["curl"] {
                 match Command::new(name).arg("--version").output() {
                     Ok(out) if out.status.success() => println!(
                         "OK {name}: {}",

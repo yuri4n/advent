@@ -2,21 +2,25 @@
 
 Open this directory in your editor. `advent.cabal` is the source of truth and
 `cabal.project` lets Haskell Language Server discover the library, executable,
-and tests. Install HLS built for your GHC version; the cloud environment uses
-GHC 9.6.6 and Cabal 3.10.3.0. Fourmolu reads `fourmolu.yaml`.
+and tests. The [Nix and direnv setup](../docs/manual.md#set-up-the-tools) selects
+the Haskell environment on entry after you approve its `.envrc` with
+`direnv allow`. Alternatively, run `nix develop .#haskell` from the repository
+root. With manual toolchains, install HLS built for your GHC version.
+Fourmolu reads `fourmolu.yaml`.
 
 From the repository root:
 
 ```sh
-./aoc new 2026 1 --lang haskell
-./aoc run 2021 9 --lang haskell --part 1
-./aoc test 2021 9 --lang haskell
+aoc new 2026 1 --lang haskell
+aoc edit 2026 1 --lang haskell
+aoc run 2021 9 --lang haskell --part 1
+aoc test 2021 9 --lang haskell
 ```
 
 The adapter requires `ghc`, `cabal`, and Python 3 (only for scaffolding). The
-cloud environment already has the package dependencies installed. On a fresh
-machine, run `cabal update` and `cabal build all` in this directory once. Native
-commands then work with the dependency cache and no network:
+Nix language shell provides them, matching HLS, and the project's GHC packages.
+For a fresh manual installation, run `cabal update` and `cabal build all` in this
+directory once. Native commands work with the populated dependencies offline:
 
 ```sh
 cabal build all --offline

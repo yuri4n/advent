@@ -4,7 +4,7 @@
     {
       "label": "AoC: run",
       "type": "process",
-      "command": "${workspaceFolder:repository}/aoc",
+      "command": "aoc",
       "args": [
         "run",
         "${input:year}",
@@ -23,7 +23,7 @@
     {
       "label": "AoC: test",
       "type": "process",
-      "command": "${workspaceFolder:repository}/aoc",
+      "command": "aoc",
       "args": [
         "test",
         "${input:year}",
@@ -42,7 +42,7 @@
     {
       "label": "AoC: watch",
       "type": "process",
-      "command": "${workspaceFolder:repository}/aoc",
+      "command": "aoc",
       "args": [
         "watch",
         "${input:year}",
@@ -60,7 +60,7 @@
     {
       "label": "AoC: new day",
       "type": "process",
-      "command": "${workspaceFolder:repository}/aoc",
+      "command": "aoc",
       "args": [
         "new",
         "${input:year}",
@@ -76,7 +76,7 @@
     {
       "label": "AoC: doctor",
       "type": "process",
-      "command": "${workspaceFolder:repository}/aoc",
+      "command": "aoc",
       "args": [
         "doctor"
       ],

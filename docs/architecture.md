@@ -5,7 +5,8 @@
 | Area | Decision |
 | --- | --- |
 | Real inputs | Keep local copies in ignored central `data/yYY/dDD/input.txt`; fetch your own input. |
-| CLI | Rust binary behind the root `aoc` launcher. |
+| CLI | Compiled Rust binary on the development shell's `PATH`; root `./aoc` launcher for manual toolchains. |
+| Environment | Locked Nix base shell and language modules; direnv selects each directory's approved environment. |
 | Build tools | Cargo, Go modules, Mix, Scala CLI, and Cabal. |
 | Scala effects | Effect-free Kyo computations by default; optional bounded parallelism, effects, and streaming with a shared application boundary. |
 | Existing solutions | Move them onto the shared run/test contract while retaining their algorithms and unfinished parts. |
@@ -27,6 +28,12 @@ The contract is shared; API syntax is idiomatic. Rust macros and Haskell/Scala/E
 ## Execution contract
 
 The root `aoc.toml` identifies the checkout and registers language adapters. A command resolves year, day, language, part, and input, then delegates building/testing/running to that adapter. The CLI captures command failures and keeps compiler/test output visible.
+
+The default Nix shell supplies `aoc`, common utilities, and Neovim. Language definitions in `nix/languages/*.nix` are discovered as named development shells; `all` combines them. The root `.envrc` selects the base shell, while each language directory selects its own shell. Each `.envrc` requires the user's explicit `direnv allow` approval before automatic loading. Within Nix environments, language-targeted CLI commands enter the required shell, and `doctor` without a language selects `all`. Environment preparation finishes before benchmark timing starts.
+
+The compiled CLI discovers `aoc.toml` by walking parent directories, so the same `aoc` command works throughout the checkout. `nix develop` provides the base environment without direnv; `nix develop .#LANG` selects a language. `nix run . -- ...` exposes the standalone CLI and its basic runtime helpers. The root `./aoc` script remains a Cargo-based fallback for manual toolchains.
+
+`aoc edit` opens an existing solution in Neovim from its native project root. The default repository configuration uses built-in LSP support without a plugin manager; each optional `editor/nvim/languages/NAME.lua` module supplies that language's server and any preparation step. `--user-config` leaves editor customization to the user. When available, a matching Nix language shell supplies the compiler and language server. `--no-nix` explicitly uses the current environment. The Nix shell names `base`, `default`, and `all` are reserved for environment selection.
 
 Real input is independent of the implementation language. Native adapters consume the chosen input through their runner; compile-time embedding remains available where the language supports it. Embedding an input is a build dependency, so the file must exist before that target is compiled.
 
@@ -68,7 +75,7 @@ The migrated inventory records which parts are implemented. An unfinished part r
 | 2024 / 1 | Scala | [Day01.scala](../scala/src/main/scala/aoc/solutions/y2024/Day01.scala) | 1 and 2 |
 | 2024 / 2 | Scala | [Day02.scala](../scala/src/main/scala/aoc/solutions/y2024/Day02.scala) | None; WIP |
 
-For example, run `./aoc test 2022 1 --lang rust --part 2`. Requesting `--part both` includes the unfinished part 1 and correctly fails rather than presenting a complete suite.
+For example, run `aoc test 2022 1 --lang rust --part 2`. Requesting `--part both` includes the unfinished part 1 and correctly fails rather than presenting a complete suite.
 
 Moving a real input out of tracked files preserves its local content under `data/`. Ignoring or removing it from the current tree does not remove it from existing Git history. This work does not rewrite history or change the repository's visibility.
 
@@ -82,6 +89,10 @@ The current Scala and Elixir APIs were also checked separately: all 19 Scala har
 
 For the local checkpoint integration, 15 toolkit tests, 10 Rust workspace tests, the Go packages, 14 Elixir tests, and 21 Scala tests pass. The additional toolkit test covers the Scala launcher's optional offline flag under macOS Bash 3.2. The added regression tests exercise discovery and execution of the saved days and ensure Scala 2024 Day 2 remains unfinished. Haskell was not revalidated locally because GHC and Cabal are not installed; the earlier all-language migration results above are not a fresh Haskell check.
 
+The Nix/editor CLI changes pass 24 tests covering environment selection, preserved arguments, editor paths, and missing-tool behavior, using controlled process fixtures where needed. Clippy also passes. After incorporating the checkpoint additions, the complete `AOC_OFFLINE=1 ./scripts/check.sh` passed again across all five languages, including 14 Elixir tests, 21 Scala tests, and the Haskell samples. All 24 CLI tests also passed from the filtered source tree used by the Nix package. Actual Neovim and language-server validation is recorded in [the editor guide](editors.md#what-is-verified).
+
+`nix flake check --no-build --all-systems` evaluated all outputs, including 28 development shells across x86_64/aarch64 Linux and macOS. Actual Nix builds and shell execution remain unverified: the cloud proxy blocks `cache.nixos.org` with `CONNECT 403`, and this workspace lacks the normal `/nix` namespace.
+
 Mocked download/cache tests passed. Live puzzle download in the onboarding environment was blocked by a proxy `CONNECT 403`; access to `adventofcode.com` needs to be enabled and retried. Authenticated live input fetching was not tested because `AOC_SESSION` was not set. Interactive editor testing is described separately in [the editor guide](editors.md#what-is-verified).
 
 ## Boundaries
@@ -90,4 +101,4 @@ Custom languages supply trusted local commands and a stub template; they still n
 
 The common benchmark measures process execution, including native runtime overhead. It is useful for following changes in the same solution, and is not a statistical microbenchmark framework.
 
-Puzzle/input caching works without a network connection once populated. Compiler and package caches remain the responsibility of Cargo, Go, Mix, Scala CLI, and Cabal.
+Puzzle/input caching works without a network connection once populated. Nix pins the development tools and builds the CLI, while native project caches remain the responsibility of Cargo, Go, Mix, Scala CLI, and Cabal. First-time Scala compilation still needs its compiler and Maven artifacts; a populated Nix store alone does not make those builds offline-ready.

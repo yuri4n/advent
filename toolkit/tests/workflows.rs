@@ -358,3 +358,313 @@ fn downloads_keep_secrets_off_argv_and_preserve_good_cache_on_failure() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("A & B."));
     assert_ok(&aoc(dir.path(), &["puzzle", "22", "2", "--offline"]));
 }
+
+#[cfg(unix)]
+fn executable(path: &Path, contents: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::write(path, contents).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(unix)]
+fn editor_fixture(language: &str, extension: &str, source: &str) -> TempDir {
+    // Spaces and shell metacharacters must remain ordinary path characters.
+    let dir = tempfile::Builder::new()
+        .prefix("aoc editor ' $(never-run) ")
+        .tempdir()
+        .unwrap();
+    fs::write(
+        dir.path().join("aoc.toml"),
+        format!("version = 1\n[[languages]]\nname = \"{language}\"\nextension = \"{extension}\"\n"),
+    )
+    .unwrap();
+    let source = dir.path().join(source);
+    fs::create_dir_all(source.parent().unwrap()).unwrap();
+    fs::write(source, "unfinished solution\n").unwrap();
+    fs::create_dir_all(dir.path().join("editor/nvim")).unwrap();
+    fs::write(dir.path().join("editor/nvim/init.lua"), "-- fixture\n").unwrap();
+    fs::create_dir_all(dir.path().join("bin")).unwrap();
+    executable(
+        &dir.path().join("bin/nvim"),
+        r#"#!/bin/sh
+printf '%s\n' "$@" > "$AOC_ROOT/editor-argv"
+printf '%s\n' "$PWD" "$AOC_ROOT" "$AOC_PROJECT_ROOT" "$AOC_EDITOR_LANGUAGE" "${AOC_NIX_LANGUAGE-unset}" > "$AOC_ROOT/editor-env"
+exit "${EDITOR_EXIT:-0}"
+"#,
+    );
+    dir
+}
+
+#[cfg(unix)]
+fn editor_command(root: &Path, language: &str) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_aoc"));
+    command
+        .arg("--root")
+        .arg(root)
+        .args(["edit", "22", "1", "--lang", language])
+        .env("PATH", root.join("bin"))
+        .env_remove("AOC_NIX_LANGUAGE")
+        .env_remove("EDITOR_EXIT");
+    command
+}
+
+#[cfg(unix)]
+fn add_nix_fixture(root: &Path, language: &str) {
+    fs::write(root.join("flake.nix"), "{}\n").unwrap();
+    fs::create_dir_all(root.join("nix/languages")).unwrap();
+    fs::write(root.join(format!("nix/languages/{language}.nix")), "{}\n").unwrap();
+    executable(
+        &root.join("bin/nix"),
+        r#"#!/bin/sh
+printf '%s\n' "$@" >> "$AOC_ROOT/nix-argv"
+printf '%s\n' "$PWD" >> "$AOC_ROOT/nix-cwd"
+[ "$1" = --extra-experimental-features ] && [ "$2" = 'nix-command flakes' ] || exit 90
+shift 2
+[ "$1" = develop ] && [ "$3" = --command ] || exit 91
+export AOC_NIX_LANGUAGE="${2##*#}"
+shift 3
+exec "$@"
+"#,
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_selects_native_projects_and_custom_files_without_a_shell() {
+    for (language, extension, project, source) in [
+        ("rust", "rs", "rust", "rust/years/y2022/src/d01.rs"),
+        ("go", "go", "go", "go/y22/d01/solution.go"),
+        ("elixir", "ex", "elixir", "elixir/lib/y22/d01.ex"),
+        (
+            "scala",
+            "scala",
+            "scala",
+            "scala/src/main/scala/aoc/solutions/y2022/Day01.scala",
+        ),
+        ("haskell", "hs", "haskell", "haskell/src/Year2022/Day01.hs"),
+        ("plain", "txt", "", "solutions/plain/y22/d01.txt"),
+    ] {
+        let dir = editor_fixture(language, extension, source);
+        let root = dir.path().canonicalize().unwrap();
+        assert_ok(&editor_command(&root, language).output().unwrap());
+        assert_eq!(
+            fs::read_to_string(root.join("editor-argv")).unwrap(),
+            format!(
+                "-u\n{}\n--\n{}\n",
+                root.join("editor/nvim/init.lua").display(),
+                root.join(source).display()
+            )
+        );
+        let project = root.join(project).canonicalize().unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("editor-env")).unwrap(),
+            format!(
+                "{}\n{}\n{}\n{language}\nunset\n",
+                project.display(),
+                root.display(),
+                project.display()
+            )
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_enters_selected_nix_shell_once_preserving_relative_root_and_cwd() {
+    let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+    let root = dir.path().canonicalize().unwrap();
+    add_nix_fixture(&root, "rust");
+    // A relative --root keeps its meaning when the CLI re-enters through Nix.
+    let out = Command::new(env!("CARGO_BIN_EXE_aoc"))
+        .args(["--root", ".", "edit", "22", "1", "--lang", "rust"])
+        .current_dir(&root)
+        .env("PATH", root.join("bin"))
+        .env_remove("AOC_NIX_LANGUAGE")
+        .output()
+        .unwrap();
+    assert_ok(&out);
+    let nix = fs::read_to_string(root.join("nix-argv")).unwrap();
+    assert_eq!(
+        nix,
+        format!(
+            "--extra-experimental-features\nnix-command flakes\ndevelop\n{}#rust\n--command\n{}\n--root\n.\nedit\n22\n1\n--lang\nrust\n",
+            root.display(),
+            env!("CARGO_BIN_EXE_aoc")
+        )
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("nix-cwd")).unwrap(),
+        format!("{}\n", root.display())
+    );
+    assert!(fs::read_to_string(root.join("editor-env"))
+        .unwrap()
+        .ends_with("\nrust\nrust\n"));
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_respects_user_config_current_shell_and_explicit_no_nix() {
+    for (marker, no_nix) in [("rust", false), ("all", false), ("base", true)] {
+        let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+        let root = dir.path().canonicalize().unwrap();
+        add_nix_fixture(&root, "rust");
+        fs::remove_file(root.join("editor/nvim/init.lua")).unwrap();
+        let mut command = editor_command(&root, "rust");
+        command.arg("--user-config").env("AOC_NIX_LANGUAGE", marker);
+        if no_nix {
+            command.arg("--no-nix");
+        }
+        assert_ok(&command.output().unwrap());
+        assert!(!root.join("nix-argv").exists());
+        assert_eq!(
+            fs::read_to_string(root.join("editor-argv")).unwrap(),
+            format!(
+                "--\n{}\n",
+                root.join("rust/years/y2022/src/d01.rs").display()
+            )
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_resolves_relative_path_entries_before_changing_project_directory() {
+    let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+    assert_ok(
+        &editor_command(dir.path(), "rust")
+            .current_dir(dir.path())
+            .env("PATH", "bin")
+            .output()
+            .unwrap(),
+    );
+    assert!(dir.path().join("editor-argv").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn custom_language_without_nix_module_uses_current_tools() {
+    let dir = editor_fixture("plain", "txt", "solutions/plain/y22/d01.txt");
+    add_nix_fixture(dir.path(), "rust");
+    assert_ok(
+        &editor_command(dir.path(), "plain")
+            .env("AOC_NIX_LANGUAGE", "base")
+            .output()
+            .unwrap(),
+    );
+    assert!(!dir.path().join("nix-argv").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_rejects_missing_and_escaping_sources_before_starting_tools() {
+    use std::os::unix::fs::symlink;
+    let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+    add_nix_fixture(dir.path(), "rust");
+    let source = dir.path().join("rust/years/y2022/src/d01.rs");
+    fs::remove_file(&source).unwrap();
+    let out = editor_command(dir.path(), "rust").output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("aoc new 2022 1 --lang rust"));
+    assert!(!source.exists());
+    let external = tempfile::NamedTempFile::new().unwrap();
+    symlink(external.path(), &source).unwrap();
+    let out = editor_command(dir.path(), "rust").output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("inside the repository"));
+    assert!(!dir.path().join("editor-argv").exists());
+    assert!(!dir.path().join("nix-argv").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_reports_unavailable_neovim_and_editor_failures() {
+    let dir = editor_fixture("plain", "txt", "solutions/plain/y22/d01.txt");
+    let out = editor_command(dir.path(), "plain")
+        .env("EDITOR_EXIT", "7")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("editor failed"));
+    fs::remove_file(dir.path().join("bin/nvim")).unwrap();
+    let out = editor_command(dir.path(), "plain").output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Neovim is unavailable"));
+}
+
+#[cfg(unix)]
+#[test]
+fn doctor_does_not_require_rust_for_another_language() {
+    let dir = editor_fixture("plain", "txt", "solutions/plain/y22/d01.txt");
+    executable(
+        &dir.path().join("bin/curl"),
+        "#!/bin/sh\nprintf 'curl fixture\\n'\n",
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_aoc"))
+        .arg("--root")
+        .arg(dir.path())
+        .args(["doctor", "--lang", "plain"])
+        .env("PATH", dir.path().join("bin"))
+        .env_remove("AOC_NIX_LANGUAGE")
+        .env_remove("AOC_SESSION")
+        .output()
+        .unwrap();
+    assert_ok(&out);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("OK curl"));
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("cargo"));
+}
+
+#[cfg(unix)]
+#[test]
+fn base_nix_shell_routes_native_actions_once_but_leaves_list_alone() {
+    let dir = fixture();
+    fs::create_dir(dir.path().join("bin")).unwrap();
+    add_nix_fixture(dir.path(), "fixture");
+    let command = |args: &[&str], marker: &str| {
+        Command::new(env!("CARGO_BIN_EXE_aoc"))
+            .arg("--root")
+            .arg(dir.path())
+            .args(args)
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    dir.path().join("bin").display(),
+                    std::env::var("PATH").unwrap()
+                ),
+            )
+            .env("AOC_NIX_LANGUAGE", marker)
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+    };
+    assert_ok(&command(&["list"], "base"));
+    assert!(!dir.path().join("nix-argv").exists());
+    fs::write(dir.path().join("selected.txt"), "relative input\n").unwrap();
+    let out = command(
+        &[
+            "run",
+            "22",
+            "1",
+            "--lang",
+            "fixture",
+            "--input",
+            "selected.txt",
+        ],
+        "base",
+    );
+    assert_ok(&out);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Part 1: relative input\n"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("calls")).unwrap(),
+        "build\nrun\nrun\n"
+    );
+    let nix = fs::read_to_string(dir.path().join("nix-argv")).unwrap();
+    assert_eq!(nix.matches("\ndevelop\n").count(), 1);
+    for marker in ["fixture", "all"] {
+        assert_ok(&command(&["run", "22", "1", "--lang", "fixture"], marker));
+        assert_eq!(
+            fs::read_to_string(dir.path().join("nix-argv")).unwrap(),
+            nix
+        );
+    }
+}

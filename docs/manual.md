@@ -4,15 +4,69 @@ Language guides: [Rust](#rust) · [Go](#go) · [Elixir](#elixir) · [Scala with 
 
 ## Set up the tools
 
-Run commands from the repository root unless a section says otherwise. The `aoc` launcher uses Bash and Cargo; Linux, macOS, and Windows through WSL are the intended shell environments. Rust is required for the CLI even when your solutions use another language.
+Nix provides a small base environment and separate environments for each language. Every environment includes the compiled `aoc` command, common shell utilities, and Neovim on `PATH`. With direnv, entering the checkout loads its base environment after your local approval; entering a language directory selects that language's toolchain and language server. `aoc` finds the repository from any of its subdirectories; native build commands still run from their language's project directory.
+
+Install [Nix](https://nixos.org/download/) and [direnv](https://direnv.net/docs/installation.html). Nix needs the `nix-command` and `flakes` features enabled. If your installation does not enable them already, add `extra-experimental-features = nix-command flakes` to your user Nix configuration at `~/.config/nix/nix.conf`.
+
+Enable direnv for the shell you use by adding the corresponding line to its configuration, then open a new shell:
+
+| Shell | Configuration file | Hook |
+| --- | --- | --- |
+| Bash | `~/.bashrc` | `eval "$(direnv hook bash)"` |
+| Zsh | `~/.zshrc` | `eval "$(direnv hook zsh)"` |
+| Fish | `~/.config/fish/config.fish` | `direnv hook fish \| source` |
+
+These are local shell settings; repository setup does not edit them automatically. Review the checkout's [.envrc](../.envrc), then explicitly approve it from the repository root:
 
 ```sh
-./aoc doctor
-./aoc doctor --lang rust
-./aoc list
+direnv allow
 ```
 
-Install only the languages you plan to use. A doctor failure for an unused language does not prevent using another installed language.
+At the next prompt, direnv evaluates the flake and loads the environment. The first load downloads or builds its pinned dependencies and the CLI; subsequent loads reuse Nix's store. Each language directory has its own `.envrc`, which also needs an explicit `direnv allow` on first entry. Repeat approval when direnv reports that an `.envrc` has changed. Optional [nix-direnv](https://github.com/nix-community/nix-direnv) can cache development environments to speed up loading; the configuration also works with current direnv's standard `use flake` support.
+
+```sh
+aoc doctor --lang rust
+aoc list
+cd scala
+direnv allow
+aoc doctor --lang scala
+cd ..
+```
+
+In a Nix environment, language commands (`new`, `run`, `test`, `bench`, `watch`, `edit`, and `doctor --lang`) select the corresponding language shell automatically. `aoc doctor` without `--lang` selects all toolchains, so use the language flag when you only need one. Environment preparation happens before benchmark timing.
+
+Without direnv, choose a shell explicitly from the repository root:
+
+```sh
+nix develop
+nix develop .#scala
+nix develop .#all
+```
+
+Use one of those commands: they enter the base shell, the Scala shell, or the combined shell respectively. For a single command without an interactive shell, use `nix develop .#rust --command aoc doctor --lang rust`.
+
+| Shell | Additional tools beyond the base environment |
+| --- | --- |
+| `rust` | Pinned Rust toolchain, rust-analyzer, source, formatter, and Clippy. |
+| `go` | Go and gopls. |
+| `elixir` | Erlang/OTP, Elixir/Mix, and ElixirLS. |
+| `scala` | Scala CLI, JDK, and Metals. |
+| `haskell` | GHC with project packages, Cabal, and Haskell Language Server. |
+| `all` | All five language environments together. |
+
+The base utilities include Git, curl, Python 3, jq, ripgrep, fd, and fzf. If you edit the toolkit itself, `direnv reload` rebuilds the CLI when needed; solution changes remain handled by their native build tools.
+
+The flake also exposes the standalone CLI as an app:
+
+```sh
+nix run . -- list
+```
+
+`nix run` supplies the CLI and its basic runtime helpers. Use a development shell for native compiler commands. The pins and package definitions live in [flake.nix](../flake.nix) and [flake.lock](../flake.lock).
+
+### Existing manual toolchains
+
+The root `./aoc` launcher remains a fallback for machines with Bash and Cargo already installed. It builds the Rust CLI on demand; invoke it from the repository root, using `./aoc` in place of `aoc` in the examples below. Rust is required for that launcher even when your solutions use another language. Install only the additional languages you plan to use; a doctor failure for an unused language does not prevent using another installed language.
 
 | Project | Required tools | Native metadata |
 | --- | --- | --- |
@@ -24,17 +78,18 @@ Install only the languages you plan to use. A doctor failure for an unused langu
 | Haskell | GHC, Cabal; Python 3 for scaffolding | `haskell/advent.cabal`, `haskell/cabal.project` |
 | Downloads | curl and network access | `AOC_SESSION` for authenticated requests |
 
-Use the versions declared by each native project. Add rust-analyzer, gopls, ElixirLS, Metals, or Haskell Language Server for [editor support](editors.md).
+For manual installations, use the versions declared by each native project and add rust-analyzer, gopls, ElixirLS, Metals, or Haskell Language Server for [editor support](editors.md).
 
 ## The daily loop
 
 ```sh
-./aoc new 2026 1 --lang rust
-./aoc fetch 2026 1
-./aoc puzzle 2026 1
-./aoc test 2026 1 --lang rust --part 1
-./aoc run 2026 1 --lang rust --part 1 --time
-./aoc watch 2026 1 --lang rust --part 1
+aoc new 2026 1 --lang rust
+aoc edit 2026 1 --lang rust
+aoc fetch 2026 1
+aoc puzzle 2026 1
+aoc test 2026 1 --lang rust --part 1
+aoc run 2026 1 --lang rust --part 1 --time
+aoc watch 2026 1 --lang rust --part 1
 ```
 
 Use the year and day of an already released puzzle when fetching. Creating a future day's stub does not require that the puzzle be published.
@@ -48,6 +103,7 @@ The built-in language names are `rust`, `go`, `elixir`, `scala`, and `haskell`. 
 | Command | Purpose |
 | --- | --- |
 | `new YEAR DAY --lang LANG` | Create an unfinished solution and native build registration. |
+| `edit YEAR DAY --lang LANG [--user-config] [--no-nix]` | Open an existing solution in Neovim with the selected language environment. |
 | `run YEAR DAY --lang LANG --part 1\|2\|both [--input PATH] [--time]` | Run the selected part or both parts. |
 | `test YEAR DAY --lang LANG [--part 1\|2\|both]` | Check the day's inline sample assertions. |
 | `bench YEAR DAY --lang LANG --part 1\|2\|both [--iterations N] [--warmup N] [--input PATH]` | Run warmups followed by repeated timed executions. |
@@ -58,9 +114,11 @@ The built-in language names are `rust`, `go`, `elixir`, `scala`, and `haskell`. 
 | `list` | List registered languages and adapters. |
 | `add-language NAME --extension EXT --run COMMAND --test COMMAND [--build COMMAND] [--stub SOURCE]` | Register another language and its template. |
 
-Run `./aoc --help` for the command syntax supported by the installed checkout.
+Run `aoc --help` for the command syntax supported by the installed checkout.
 
 Both `2022` and `22` select year 2022. Days are 1–25; `--part` defaults to `both`. Watch reruns the solution after changes, including central input edits; it does not run sample tests automatically. Run `test` separately when updating a sample.
+
+`edit` opens the solution using the repository's minimal Neovim configuration and the native language project as its working directory. Create a missing day with `new` first; editing never creates it implicitly. `--user-config` keeps your own Neovim configuration, and `--no-nix` uses tools from the current environment. Outside a Nix shell, `edit` enters the selected language shell when Nix and the corresponding shell definition are available. See [the editor guide](editors.md#neovim) for navigation, diagnostics, and formatting shortcuts.
 
 ## Inputs, samples, and offline use
 
@@ -76,7 +134,7 @@ data/
 The CLI finds the repository through `aoc.toml` and supplies the input to the native adapter. Use an explicit input file when experimenting:
 
 ```sh
-./aoc run 2022 1 --lang rust --part 2 --input /tmp/my-example.txt
+aoc run 2022 1 --lang rust --part 2 --input /tmp/my-example.txt
 ```
 
 Inputs and downloaded puzzle material are local caches, excluded from Git. Supply `AOC_SESSION` using your shell's secret manager or the cloud environment's secret settings. It is the value of your own Advent of Code session cookie. Do not put it in a command argument, a committed environment file, editor settings, or chat. The toolkit does not submit answers.
@@ -85,15 +143,17 @@ Inputs and downloaded puzzle material are local caches, excluded from Git. Suppl
 
 Offline puzzle/input access and offline dependency installation are different. Run each native build once with its dependencies available before relying on an offline session. Cargo, Go, Mix, Scala CLI, and Cabal keep their own compiler and dependency caches.
 
+Nix pins the development tools and CLI, but it does not prefetch personal puzzle data or all native project dependencies. Prepare the Nix development shell while connected, then warm the native builds you will use. Scala CLI still downloads its Scala compiler and Maven dependencies into its own cache on first use. Offline use needs both the relevant Nix store paths and those language caches populated.
+
 For cached Scala builds/tests, set `AOC_OFFLINE=1` when invoking the toolkit. Native Cargo and Cabal commands also support `--offline`. A cache miss still needs a connected preparation step; the toolkit does not fabricate inputs or dependencies.
 
 Samples are inline with native source/tests. Expected answers belong to those assertions; there is no mandatory shared `answers.toml`. A missing expected part can be left unset while working on the other part. An empty generated template is unfinished work, not a passing sample suite.
 
 ## Native workflows
 
-These commands are useful for checking project health or configuring an editor. For running a day, prefer `./aoc` so input paths and part selection stay consistent.
+These commands are useful for checking project health or configuring an editor. For running a day, prefer `aoc` so input paths and part selection stay consistent.
 
-Run `./scripts/check.sh` from the repository root to check the toolkit, Rust harness, Go, Elixir, Cabal, and all three migrated Scala days together. This requires all five toolchains and their dependencies; it does not require real puzzle inputs. Use `AOC_OFFLINE=1 ./scripts/check.sh` to keep the Scala builds on their populated dependency cache.
+Run `nix develop .#all --command bash ./scripts/check.sh` from the repository root to check the toolkit, Rust harness, Go, Elixir, Cabal, and all three migrated Scala days together. With all tools already available, run `./scripts/check.sh` directly. This requires the language dependencies but no real puzzle inputs. Use `AOC_OFFLINE=1 ./scripts/check.sh` to keep Scala builds on their populated dependency cache.
 
 | Project directory | Native command |
 | --- | --- |
@@ -169,7 +229,7 @@ mix aoc.run 2020 2 --part 1 --stdin < ../data/y20/d02/input.txt
 mix test
 ```
 
-`mix aoc.new` creates one module containing the unfinished part functions and a commented sample declaration. `./aoc new`, `./aoc run`, and `./aoc test` remain available from the repository root.
+`mix aoc.new` creates one module containing the unfinished part functions and a commented sample declaration. `aoc new`, `aoc run`, and `aoc test` remain available from the repository root.
 
 ### Scala
 
@@ -209,10 +269,10 @@ Replace the placeholder input and answer with a real puzzle sample. Expected ans
 Use the shared CLI from the repository root:
 
 ```sh
-./aoc new 2026 1 --lang scala
-./aoc test 2021 1 --lang scala --part 1
-./aoc run 2021 1 --lang scala --part 1 --time
-./aoc watch 2021 1 --lang scala --part 1
+aoc new 2026 1 --lang scala
+aoc test 2021 1 --lang scala --part 1
+aoc run 2021 1 --lang scala --part 1 --time
+aoc watch 2021 1 --lang scala --part 1
 ```
 
 Native execution accepts standard input. Run the MUnit harness tests separately from a selected day's inline samples:
@@ -292,8 +352,8 @@ cabal run advent-exe -- run 2021 9 1 < ../data/y21/d09/input.txt
 ## Timing and benchmarks
 
 ```sh
-./aoc run 2022 1 --lang rust --part 2 --time
-./aoc bench 2022 1 --lang rust --part 2 --warmup 2 --iterations 10
+aoc run 2022 1 --lang rust --part 2 --time
+aoc bench 2022 1 --lang rust --part 2 --warmup 2 --iterations 10
 ```
 
 Use a completed part and the same input when comparing changes. The shared benchmark builds once, runs the warmups, and reports minimum, median, mean, and maximum wall time. Defaults are one warmup and ten measured runs. It also rejects answers that change between runs.
@@ -305,21 +365,34 @@ These measurements include process/runtime startup and input handling; they do n
 The CLI can register a language without changing its Rust source. Specify the extension, a run command, a test command, and a syntactically valid unfinished template. Commands are trusted local code: only register commands you would run yourself.
 
 ```sh
-./aoc add-language python --extension py \
+aoc add-language python --extension py \
   --run 'python3 {file} {part}' \
   --test 'python3 {file} --test {part}' \
   --stub 'raise NotImplementedError("implement the puzzle parts")'
 ```
 
-Registration updates `aoc.toml` and writes `templates/python/day.py`. Then `./aoc new 2026 1 --lang python` creates `solutions/python/y26/d01.py`. Existing language registrations and source files are not overwritten. Use `--build COMMAND` when compilation is needed before a run.
+Registration updates `aoc.toml` and writes `templates/python/day.py`. Then `aoc new 2026 1 --lang python` creates `solutions/python/y26/d01.py`. Existing language registrations and source files are not overwritten. Use `--build COMMAND` when compilation is needed before a run.
 
 Command templates can use `{file}`, `{year}`, `{day}`, and `{part}`. `{file}` is already shell-quoted by the toolkit, so do not wrap that placeholder in extra quotes. Commands run from the repository root. The run command receives the input on standard input; arrange your native runner to select the requested part and print its answer. The test command must reject failed or missing samples and support `1`, `2`, and `both`. The example deliberately creates an unfinished program. You must implement its runner and tests before it can pass.
 
 Adding a language provides orchestration and file generation. Install its compiler/interpreter and language server, then add any native dependency manifest or editor project data it requires. The built-in VS Code language picker is a static convenience; add your new language there or use the terminal.
 
+Nix language environments are separate, small modules. To supply a custom language's tools, add a matching `nix/languages/NAME.nix` file; the flake discovers it automatically as a named shell. For example, `nix/languages/python.nix` could contain:
+
+```nix
+{ pkgs, ... }: {
+  packages = [ pkgs.python3 pkgs.pyright ];
+}
+```
+
+Modules receive `pkgs` and the pinned `rust` toolchain, and may also return an `environment` attribute set. The shell names `base`, `default`, and `all` are reserved; use the CLI language name for any other module. Add the file to Git so the flake can see it, then use `nix develop .#python`; `direnv reload` refreshes an existing environment.
+
+For the bundled Neovim setup, add an optional matching `editor/nvim/languages/python.lua` module using the [editor module contract](editors.md#add-a-neovim-language). The CLI registration, Nix toolchain module, Neovim server module, and native project metadata serve different purposes and should use the same language name.
+
 ## Troubleshooting
 
-- A command is missing: run `./aoc doctor --lang LANG`, install that tool, and restart terminals/editors so they inherit the updated `PATH`.
+- `aoc` is missing: check that the direnv hook is enabled and this checkout's `.envrc` is approved, or enter `nix develop`. For manual toolchains, use `./aoc` from the repository root.
+- Another command is missing: run `aoc doctor --lang LANG` in the development shell. With manual toolchains, install the missing tool and restart terminals/editors so they inherit the updated `PATH`.
 - Input is missing: fetch it after configuring `AOC_SESSION`, or pass `--input PATH`. Test samples do not require the real input.
 - A part is unfinished: select the implemented part explicitly. Migration preserves existing incomplete solutions.
 - A sample command fails with no assertions: supply a real inline sample and its expected answer for that part.

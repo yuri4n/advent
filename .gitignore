@@ -24,3 +24,8 @@
 
 # Shared native runner cache
 /.aoc/
+
+# Nix and direnv state
+.direnv/
+/result
+/result-*

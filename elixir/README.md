@@ -3,6 +3,12 @@
 Open this directory as a Mix project. Elixir 1.14 or later and a compatible
 Erlang/OTP are required; there are no external package dependencies.
 
+With the [Nix and direnv setup](../docs/manual.md#set-up-the-tools), entering this
+directory selects the Elixir environment after you approve its `.envrc` with
+`direnv allow`. Alternatively, run `nix develop .#elixir` from the repository
+root. `aoc edit 2020 2 --lang elixir` opens the solution with the project tools
+and ElixirLS available.
+
 A day declares its metadata and samples once, then uses ordinary functions:
 
 ```elixir
@@ -50,7 +56,7 @@ so selecting `both` fails when only part 1 has samples. Failed answers and missi
 expectations return nonzero status. New days are discovered automatically, and
 `aoc.new` refuses to overwrite an existing module.
 
-The repository `./aoc` command uses these same Mix tasks. Its adapter builds
+The repository `aoc` command uses these same Mix tasks. Its adapter builds
 before running, then uses `mix aoc.run --stdin --no-compile` so answer output stays
 clean and benchmark loops exclude compilation. Elixir runtime startup remains in
 the reported process timings.
