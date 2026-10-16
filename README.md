@@ -1,6 +1,35 @@
-# Advent of Code
+# yurian's Advent of Code
 
 My Advent of Code solutions in Rust, Go, Elixir, Scala, and Haskell, with a shared toolkit for creating, running, and checking both parts of a puzzle. Solution files stay focused on puzzle logic; each language uses its own idioms and native build tools.
+
+[Solutions](#solutions) · [Getting started](#getting-started) · [Developer manual](docs/manual.md) · [Editors and IDEs](docs/editors.md)
+
+## Solutions
+
+- [ ] Year 2024 [[Scala](scala/src/main/scala/aoc/solutions/y2024/)].
+  - [x] Day 1 [[Scala](scala/src/main/scala/aoc/solutions/y2024/Day01.scala)].
+  - [ ] Day 2 [[Scala](scala/src/main/scala/aoc/solutions/y2024/Day02.scala)].
+- [ ] Year 2023 [[Elixir](elixir/lib/y23/)].
+  - [x] Day 1 [[Elixir](elixir/lib/y23/d01.ex)].
+- [ ] Year 2022 [[Rust](rust/years/y2022/)].
+  - [x] Day 1 [[Rust](rust/years/y2022/src/d01.rs)].
+- [ ] Year 2021 [[Haskell](haskell/src/Year2021/) | [Rust](rust/years/y2021/) | [Scala](scala/src/main/scala/aoc/solutions/y2021/)].
+  - [x] Day 1 [[Scala](scala/src/main/scala/aoc/solutions/y2021/Day01.scala)].
+  - [x] Day 2 [[Scala](scala/src/main/scala/aoc/solutions/y2021/Day02.scala)].
+  - [x] Day 3 [[Scala](scala/src/main/scala/aoc/solutions/y2021/Day03.scala)].
+  - [x] Day 4 [[Haskell](haskell/src/Year2021/Day04.hs)].
+  - [x] Day 5 [[Haskell](haskell/src/Year2021/Day05.hs)].
+  - [x] Day 6 [[Haskell](haskell/src/Year2021/Day06.hs)].
+  - [x] Day 7 [[Rust](rust/years/y2021/src/d07.rs)].
+  - [x] Day 8 [[Rust](rust/years/y2021/src/d08.rs)].
+    - [x] Part I.
+    - [ ] Part II.
+  - [x] Day 9 [[Haskell](haskell/src/Year2021/Day09.hs)].
+- [ ] Year 2020 [[Elixir](elixir/lib/y20/) | [Go](go/y20/)].
+  - [x] Day 1 [[Go](go/y20/d01/solution.go)].
+  - [x] Day 2 [[Elixir](elixir/lib/y20/d02.ex)].
+
+## Getting started
 
 Install [Nix and direnv, then enable your shell's direnv hook](docs/manual.md#set-up-the-tools). From the repository root, review [.envrc](.envrc) and run `direnv allow` once to approve it. At the next prompt, a base environment supplies the compiled `aoc` command, common utilities, and Neovim on `PATH`. Language commands select their toolchain as needed; entering a language directory also selects its environment after approving that directory's `.envrc`.
 
