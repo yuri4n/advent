@@ -60,7 +60,7 @@ object Day01 extends Solution {
 }
 ```
 
-This is a small API illustration, not a puzzle solution. `Parse.runOrAbort`, `Parse.int`, `Parse.inOrder`, `Parse.spaced`, `Parse.regex`, etc. are **Kyo's own APIs**. In RC7, use `Parse.entireInput(parser)` to reject trailing text. Scala 3.9.0, Kyo core/parse 1.0.0-RC7, and the native Kyo test API/runner are pinned together; MUnit is not used.
+This is a small API illustration, not a puzzle solution. `Parse.runOrAbort`, `Parse.int`, `Parse.inOrder`, `Parse.spaced`, `Parse.regex`, etc. are **Kyo's own APIs**. In RC7, use `Parse.entireInput(parser)` to reject trailing text. Scala 3.9.0, Kyo core/parse 1.0.0-RC7, and the native Kyo test API/runner are pinned together; MUnit is not used. The published RC7 jars require JDK 25 or newer.
 
 `aoc.Parsing.nonNegativeLong` supplies one missing primitive: ASCII decimal digits bounded by `Long.MaxValue`, without accepting signs or consuming a following separator. It is exported by `Solution`, so a day can use `nonNegativeLong` directly. Overflow is a typed parse failure, not a numeric exception. Compose it with ordinary Kyo combinators; the helper is not a new parsing DSL.
 

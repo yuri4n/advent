@@ -42,7 +42,7 @@ From the root, use `./aoc` instead of `aoc`. That launcher requires Bash and Car
 | Toolkit/Rust | Cargo; `rust-toolchain.toml`, Cargo manifests and locks |
 | Go | Go 1.19+; `go/go.mod`, `go/go.sum` |
 | Elixir | Elixir ~>1.14 and compatible OTP; `elixir/mix.exs`, `mix.lock` |
-| Scala | Scala CLI, JDK 17+; `scala/project.scala` |
+| Scala | Scala CLI, JDK 25+ (required by Kyo RC7); `scala/project.scala` |
 | Haskell | GHC, Cabal; `haskell/advent.cabal`, `cabal.project` |
 
 Install dependencies with the relevant native build once while connected. The parser libraries and solution contracts are described in [Writing a solution](solutions.md).
@@ -191,7 +191,7 @@ See [the Elixir solution guide](solutions.md#elixir) for NimbleParsec and `proce
 
 ### Scala
 
-See [the Scala solution guide](solutions.md#scala) for inner types, Kyo Parse, typed example cases, optional parts, and IDE execution. Kyo 1.0.0-RC7 and Scala 3.9.0 remain pinned. Repeated runs reuse the packaged jar when source contents, resources, adapter, and toolchain fingerprint are unchanged. Source additions/deletions also invalidate the cache. Delete `.aoc/build/scala/advent.jar` to force a fresh build.
+See [the Scala solution guide](solutions.md#scala) for inner types, Kyo Parse, typed example cases, optional parts, and IDE execution. Kyo 1.0.0-RC7 and Scala 3.9.0 are pinned; the published RC7 jars require Java 25, provided by the Scala Nix shell. Repeated runs reuse the packaged jar when source contents, resources, adapter, and toolchain fingerprint are unchanged. Source additions/deletions also invalidate the cache. Delete `.aoc/build/scala/advent.jar` to force a fresh build.
 
 ### Haskell
 

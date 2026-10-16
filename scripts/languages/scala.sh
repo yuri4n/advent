@@ -30,7 +30,7 @@ build_fingerprint() {
 }
 build() {
   command -v "$scala_cli" >/dev/null || fail 'install scala-cli, or set SCALA_CLI to its executable'
-  command -v "$java_command" >/dev/null || fail 'install a JDK (17 or newer), or set AOC_JAVA'
+  command -v "$java_command" >/dev/null || fail 'install JDK 25 or newer for Kyo RC7, or set AOC_JAVA'
   mkdir -p "$(dirname "$jar")"
   local stamp="$jar.fingerprint" fingerprint
   fingerprint=$(build_fingerprint)
@@ -131,7 +131,7 @@ EOF
     ;;
   doctor)
     command -v "$scala_cli" >/dev/null || fail 'scala-cli missing; install it or set SCALA_CLI'
-    command -v "$java_command" >/dev/null || fail 'JDK missing; install Java 17+ or set AOC_JAVA'
+    command -v "$java_command" >/dev/null || fail 'JDK missing; install Java 25+ for Kyo RC7 or set AOC_JAVA'
     "$scala_cli" version
     "$java_command" -version
     ;;
