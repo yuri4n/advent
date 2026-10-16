@@ -18,7 +18,7 @@ func TestNewCreatesDiscoverableStubsAndPreservesExistingDay(t *testing.T) {
 		t.Fatalf("missing empty stub: %q, %v", source, err)
 	}
 	registry, err := os.ReadFile(filepath.Join(root, "cmd", "aoc", "days_gen.go"))
-	if err != nil || !strings.Contains(string(registry), "runner.Register(y26d01.Part1, y26d01.Part2)") {
+	if err != nil || !strings.Contains(string(registry), "y26d01.Solution") {
 		t.Fatalf("new day not registered: %q, %v", registry, err)
 	}
 	if _, err := New(root, 2026, 1); err == nil {

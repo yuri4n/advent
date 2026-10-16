@@ -5,7 +5,7 @@ Personal inputs live at `data/yYY/dDD/input.txt`, shared by all languages.
 selected native runner. `--input PATH` temporarily overrides the file.
 
 Downloaded puzzle descriptions are cached alongside the input as `puzzle.html`.
-Both kinds of downloads are ignored by Git. Inline samples and their assertions
+Both kinds of downloads are ignored by Git. Inline examples and their typed assertions
 belong in each language's solution or native test file, so tests work without
 personal downloads. `--offline` on fetch/puzzle only uses existing files.
 

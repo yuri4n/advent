@@ -1,9 +1,11 @@
 package aoc.solutions.y2024
 
-import aoc.{Day, Sample}
-import kyo.<
+import aoc.{ExampleBoth, Input, Puzzle, Solution}
+import kyo.*
 
-object Day01 extends Day[Int, Int] {
+object Day01 extends Solution {
+  type Prepared = Vector[(Int, Int)]
+  type Answer1  = Int
   def sortZip[A: Ordering, B: Ordering](
       seqA: Seq[A],
       seqB: Seq[B]
@@ -23,19 +25,19 @@ object Day01 extends Day[Int, Int] {
     left.map(value => value * rightCount.getOrElse(value, 0)).sum
   }
 
-  private def parse(input: String): Vector[(Int, Int)] =
-    input.linesIterator.map { line =>
-      line.split("\\s+") match {
-        case Array(a, b) => (a.toInt, b.toInt)
-        case _           =>
-          throw IllegalArgumentException("expected two location IDs per line")
-      }
-    }.toVector
+  def process(input: Input): Vector[(Int, Int)] < Puzzle.Effects =
+    input.lines
+      .map(line =>
+        Parse.runOrAbort(line)(
+          Parse.entireInput(Parse.inOrder(Parse.int, Parse.spaced(Parse.int)))
+        )
+      )
+      .fold(Vector.empty[(Int, Int)])(_ :+ _)
 
-  def part1(input: String): Int < Any = first(parse(input))
-  def part2(input: String): Int < Any = second(parse(input))
+  override val part1 = solve((input: Prepared) => first(input))
+  override val part2 = solve((input: Prepared) => second(input))
 
-  override val samples = Seq(
-    Sample("3   4\n4   3\n2   5\n1   3\n3   9\n3   3\n", Some("11"), Some("31"))
+  override val examples = Seq(
+    ExampleBoth("3   4\n4   3\n2   5\n1   3\n3   9\n3   3\n", 11, 31)
   )
 }

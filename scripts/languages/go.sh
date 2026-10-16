@@ -39,14 +39,26 @@ case "${1:-}" in
     [[ -x "$root/.aoc/bin/go-aoc" ]] || { echo "Run the Go build adapter first." >&2; exit 1; }
     exec "$root/.aoc/bin/go-aoc" "$2" "$3" "$4"
     ;;
+  bench)
+    [[ $# == 6 ]] || { echo "usage: go.sh bench YEAR DAY PART ITERATIONS WARMUP" >&2; exit 1; }
+    exec "$root/.aoc/bin/go-aoc" bench "$2" "$3" "$4" "$5" "$6"
+    ;;
+  expect)
+    [[ $# == 5 ]] || { echo "usage: go.sh expect YEAR DAY PART INDEX" >&2; exit 1; }
+    exec "$root/.aoc/bin/go-aoc" expect "$2" "$3" "$4" "$5"
+    ;;
+  example)
+    [[ $# == 4 ]] || { echo "usage: go.sh example YEAR DAY INDEX" >&2; exit 1; }
+    exec "$root/.aoc/bin/go-aoc" example "$2" "$3" "$4"
+    ;;
   test)
     check_go
     [[ $# == 3 || $# == 4 ]] || { echo "usage: go.sh test YEAR DAY [1|2|both]" >&2; exit 1; }
     package=$(date_path "$2" "$3")
     part="${4:-both}"
     case "$part" in
-      1|2) pattern="^TestSamples$/^part${part}$"; expected=("part${part}") ;;
-      both) pattern='^TestSamples$'; expected=(part1 part2) ;;
+      1|2) pattern="^Test(Examples|Samples)$/^part${part}$"; expected=("part${part}") ;;
+      both) pattern='^Test(Examples|Samples)$'; expected=(part1 part2) ;;
       *) echo "part must be 1, 2, or both" >&2; exit 1 ;;
     esac
     if ! output=$(go test -count=1 -v -run "$pattern" "$package" 2>&1); then
@@ -55,8 +67,8 @@ case "${1:-}" in
     fi
     printf '%s\n' "$output"
     for sample_part in "${expected[@]}"; do
-      if ! printf '%s\n' "$output" | grep -q "^[[:space:]]*--- PASS: TestSamples/${sample_part} ("; then
-        echo "No completed Go samples found: define TestSamples/${sample_part}." >&2
+      if ! printf '%s\n' "$output" | grep -Eq "^[[:space:]]*--- PASS: Test(Examples|Samples)/${sample_part} \\("; then
+        echo "No completed Go examples found: define TestExamples/${sample_part}." >&2
         exit 1
       fi
     done
@@ -66,5 +78,5 @@ case "${1:-}" in
     [[ $# == 3 ]] || { echo "usage: go.sh new YEAR DAY" >&2; exit 1; }
     exec go run ./cmd/scaffold "$2" "$3"
     ;;
-  *) echo "usage: go.sh {doctor|build YEAR|run YEAR DAY PART|test YEAR DAY [PART]|new YEAR DAY}" >&2; exit 1 ;;
+  *) echo "usage: go.sh {doctor|build YEAR|run YEAR DAY PART|test YEAR DAY [PART]|example YEAR DAY INDEX|new YEAR DAY}" >&2; exit 1 ;;
 esac

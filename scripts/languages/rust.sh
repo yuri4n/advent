@@ -43,6 +43,21 @@ case ${1:-} in
         [[ -x "$executable" ]] || fail "Rust year $year is not built; run the adapter build command first"
         exec "$executable" run "$day" "$part"
         ;;
+    bench)
+        check_year
+        check_day
+        exec "$target/release/aoc-y$year" bench "$day" "${4:?part required}" "${5:?iterations required}" "${6:?warmup required}"
+        ;;
+    expect)
+        check_year
+        check_day
+        exec "$target/release/aoc-y$year" expect "$day" "${4:?part required}" "${5:?example index required}"
+        ;;
+    example)
+        check_year
+        check_day
+        exec "$target/release/aoc-y$year" example "$day" "${4:?example index required}"
+        ;;
     test)
         check_year
         check_day
@@ -76,17 +91,23 @@ aoc = { path = "../../aoc" }
 EOF
         fi
         cat > "$solution" <<EOF
-pub fn part1(_input: &str) -> u64 {
-    todo!("$year day $day part 1")
+pub struct Solver;
+impl aoc::Solution for Solver {
+    type Prepared<'a> = aoc::Lines<'a>;
+    type Answer = u64;
+    // Set PARTS to &[1], &[2], or &[1, 2] only as those parts are implemented.
+
+    fn process(input: aoc::Input<'_>) -> Result<Self::Prepared<'_>, String> { Ok(input.lines()) }
+    fn part1(_input: Self::Prepared<'_>) -> Result<u64, String> {
+        todo!("$year day $day part 1")
+    }
+    fn part2(_input: Self::Prepared<'_>) -> Result<u64, String> {
+        todo!("$year day $day part 2")
+    }
 }
 
-pub fn part2(_input: &str) -> u64 {
-    todo!("$year day $day part 2")
-}
-
-// Add expectations as parts are implemented, for example:
-// aoc::sample!("example", "inline input", part1 = "expected answer")
-pub const SAMPLES: &[aoc::Sample] = &[];
+// aoc::example!("example", "inline input", part1 = expected_answer)
+pub const EXAMPLES: &[aoc::Example<u64>] = &[];
 EOF
         temporary=$(mktemp "$source_dir/.main.XXXXXX")
         trap 'rm -f "$temporary"' EXIT
@@ -96,7 +117,11 @@ EOF
                 module=${source##*/}
                 module=${module%.rs}
                 number=${module#d}
-                printf '    %d => %s,\n' "$((10#$number))" "$module"
+                if grep -q 'impl aoc::Solution for Solver' "$source"; then
+                    printf '    %d => %s: Solver,\n' "$((10#$number))" "$module"
+                else
+                    printf '    %d => %s,\n' "$((10#$number))" "$module"
+                fi
             done
             printf '}\n'
         } > "$temporary"
@@ -104,5 +129,5 @@ EOF
         cargo generate-lockfile --offline --manifest-path "$manifest"
         printf 'Created %s\n' "$solution"
         ;;
-    *) fail 'usage: rust.sh build YEAR | run YEAR DAY PART | test YEAR DAY [PART] | new YEAR DAY | doctor' ;;
+    *) fail 'usage: rust.sh build YEAR | run YEAR DAY PART | test YEAR DAY [PART] | example YEAR DAY INDEX | new YEAR DAY | doctor' ;;
 esac

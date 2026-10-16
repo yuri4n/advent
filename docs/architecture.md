@@ -11,11 +11,11 @@
 | Scala effects | Effect-free Kyo computations by default; optional bounded parallelism, effects, and streaming with a shared application boundary. |
 | Existing solutions | Move them onto the shared run/test contract while retaining their algorithms and unfinished parts. |
 | Languages | Five built-in adapters, plus `add-language` for a custom command/template registration. |
-| Samples | Inline native samples/tests rather than a mandatory shared answers file. |
+| Examples | Inline typed expectations (part 1, part 2, both, or input-only), rather than a shared answers file. |
 | Rust layout | One crate per year and a shared harness. |
 | Rust registration | Explicit macro/registry rather than link-time collection. |
 | Parsing | Support idiomatic parsing in each language; share parsed values between parts where the native harness supports it. |
-| Development loop | Shared watch command, timing, and repeatable process benchmarks. |
+| Development loop | Shared watch, checked examples, streamed byte-backed inputs, native with/without-processing benchmarks, optional process wall timing, and fingerprint-cached Scala builds. |
 | Puzzle material | Fetch and cache statements for terminal reading; explicit offline mode. |
 | Diagnostics | Toolchain doctor. |
 | Submission | No automatic answer submission. |
@@ -39,9 +39,13 @@ For Neovim, normal startup loads the user's personal configuration, including `N
 
 Real input is independent of the implementation language. Native adapters consume the chosen input through their runner; compile-time embedding remains available where the language supports it. Embedding an input is a build dependency, so the file must exist before that target is compiled.
 
-Inline samples keep the input and expected answer close to the code being checked. Only supplied expectations are assertions. Selecting an unfinished part or a day with no relevant sample assertions must not be interpreted as successful validation.
+Inline examples keep input and typed expectations close to the solution. Only supplied expectations are assertions. Input-only examples can be executed, but do not constitute a passing test suite. Native automatic entry points run available examples and existing personal input; they skip missing data and unavailable parts, but never suppress failures in implemented parts.
 
-Scala days implement `Day[Part1, Part2]` with functions from `String` to Kyo computations. The default `Answer < Any` annotation permits an ordinary pure expression without an `IO` wrapper, while parsing and algorithm helpers return plain values. A part may opt into `Async`, `Abort[Throwable]`, and `Resource`, including bounded parallel work, without changing its input shape. The shared `KyoApp` owns input and evaluation. `StreamingDay[Part1, Part2]` offers the same effect capabilities with single-pass `Input` access through buffered text, UTF-8 line streams, or raw byte streams. The runner supplies fresh input for each part and sample, and leaves borrowed standard input open. Successful runs print only the answer to stdout; typed failures and exceptions go to stderr with a nonzero exit status. Scala 3.7.3 and Kyo 0.19.0 are pinned together in `scala/project.scala`.
+All five languages now share a stream-first processing contract: byte-backed input → one shared processing function → selected part. The processor selects raw bytes, incrementally decoded characters, collected string lines, or genuinely lazy nested character lines. Whole-text collection is explicit. Native parser libraries are used directly: Kyo Parse, winnow, Participle, NimbleParsec, and Megaparsec. Prepared data can remain streamed or be explicitly materialized. See [the solution guide](solutions.md) for exact native APIs.
+
+Scala `Solution` objects are Kyo applications with inner `Prepared` and `Answer1` types; `Answer2` defaults to `Answer1`. `Solution.WithAnswers` supports different answer types. Optional part registrations make availability explicit, and the example ADT binds expectations to the corresponding answer types. Legacy `Day`, `StreamingDay`, and `Sample` APIs remain available. Kyo's effects, bounded parallel work, failure handling, and resource management are retained. Scala 3.9.0 and Kyo 1.0.0-RC7 stay pinned.
+
+The CLI no longer reads/clones complete input files before launching solutions. Files and single-part stdin runs use direct child stdin; finite stdin requiring replay uses a private temporary file. Clipboard reads and inline fixture extraction are explicit sources and never alter the clipboard. Native benchmark preparation is intentionally different: raw input and prepared replay data may be buffered outside solver-only timing.
 
 The toolkit does not infer puzzle answers, fill in missing algorithms, or submit results. `new` creates explicit unfinished stubs.
 
@@ -85,6 +89,9 @@ The local checkpoint integration retains the toolkit layout and ports the saved 
 
 ## Migration validation
 
+The records below describe earlier migrations and their APIs at that time. Current stream-first APIs, parser dependencies, example typing, automatic entry points, and native timing modes are documented in [the current guide](solutions.md). Existing real-input answers are compared during this migration; incomplete algorithms are not filled in.
+
+
 On 2026-10-15, the migration passed `./scripts/check.sh` across all five languages: 19 migrated sample assertions, 14 toolkit tests, and 10 Rust workspace tests, alongside the Go, Elixir, Cabal, and Scala checks. CLI scaffolding was checked in temporary copies for each language: registration and compilation succeeded, duplicate generation preserved existing files, and unfinished runs or empty sample suites failed as expected.
 
 The current Scala and Elixir APIs were also checked separately: all 19 Scala harness tests and 10 Elixir tests pass. Scala coverage includes pure values, bounded parallel execution on ordinary text-based days, typed failures, and resource cleanup. Scala's packaged runner passes all six existing sample assertions and preserves all six recorded real-input answers. Scratch CLI checks cover pure Scala templates, ordinary-day parallel computations with pure callbacks, streaming discovery, UTF-8 lines, arbitrary raw bytes, missing samples, unfinished stubs, and overwrite refusal. Elixir scratch checks cover compile-time sample declarations, native Mix tasks, central input defaults, single-file scaffolding, partial-part development, assertion failures, and overwrite protection. Both languages pass root CLI run/test checks; their format checks pass.
@@ -101,6 +108,6 @@ Mocked download/cache tests passed. Live puzzle download in the onboarding envir
 
 Custom languages supply trusted local commands and a stub template; they still need their own toolchain, runner, tests, dependencies, and editor integration. A single `add-language` command registers them with the orchestrator, but cannot invent a language's development tools.
 
-The common benchmark measures process execution, including native runtime overhead. It is useful for following changes in the same solution, and is not a statistical microbenchmark framework.
+Built-in native benchmarks report with-processing and solve-only times separately, with explicit materialization/replay setup. Immutable data can be reused; mutable/single-pass data requires copying or replay. Unsupported replay shapes fail rather than produce misleading solve-only numbers. `--wall` retains repeated process execution, including runtime startup. These practical timings are not a statistical microbenchmark framework.
 
 Puzzle/input caching works without a network connection once populated. Nix pins the development tools and builds the CLI, while native project caches remain the responsibility of Cargo, Go, Mix, Scala CLI, and Cabal. First-time Scala compilation still needs its compiler and Maven artifacts; a populated Nix store alone does not make those builds offline-ready.

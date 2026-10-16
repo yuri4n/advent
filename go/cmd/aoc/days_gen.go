@@ -8,5 +8,5 @@ import (
 )
 
 var days = map[runner.Key]runner.Day{
-	{Year: 2020, Day: 1}: runner.Register(y20d01.Part1, y20d01.Part2),
+	{Year: 2020, Day: 1}: y20d01.Solution,
 }

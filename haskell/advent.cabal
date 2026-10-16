@@ -15,7 +15,13 @@ common defaults
   build-depends:
       base >=4.14 && <5
     , array
+    , bytestring
+    , text
     , containers
+    , directory
+    , filepath
+    , deepseq
+    , megaparsec >=9 && <10
     , split >=0.2 && <0.3
 
 library
@@ -23,6 +29,8 @@ library
   hs-source-dirs: src
   exposed-modules:
       AOC
+      AOC.Input
+      AOC.Parsing
       AOC.Registry
       Year2021.Day04
       Year2021.Day05

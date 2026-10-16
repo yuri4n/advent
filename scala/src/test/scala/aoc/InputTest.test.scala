@@ -4,8 +4,8 @@ import java.io.{ByteArrayInputStream, IOException, InputStream}
 import java.nio.charset.StandardCharsets.UTF_8
 import kyo.*
 
-class InputTest extends munit.FunSuite {
-  private def run[A](value: => A < IO): A = {
+class InputTest extends PuzzleTest {
+  private def run[A](value: => A < Sync): A = {
     import AllowUnsafe.embrace.danger
     KyoApp.Unsafe
       .runAndBlock(5.seconds)(Abort.catching[Throwable](value))
@@ -65,6 +65,46 @@ class InputTest extends munit.FunSuite {
         run(fromText(text).lines.fold(Vector.empty[String])(_ :+ _)),
         expected
       )
+  }
+
+  test(
+    "character views decode UTF-8 and nested lines do not collect whole lines"
+  ) {
+    val text   = "é雪🙂\r\n\nlast"
+    assertEquals(run(fromText(text).chars.fold("")(_ + _)), text)
+    assertEquals(
+      run(
+        fromText(text).lineChars
+          .map(_.fold("")(_ + _))
+          .fold(Vector.empty[String])(_ :+ _)
+      ),
+      Vector("é雪🙂", "", "last")
+    )
+    val source =
+      new TrackedSource(("a" * 100000 + "\nsecond\n").getBytes(UTF_8))
+    assertEquals(
+      run(
+        Input
+          .fromStream(source)
+          .lineChars
+          .take(1)
+          .map(_.take(2).fold("")(_ + _))
+          .fold(Vector.empty[String])(_ :+ _)
+      ),
+      Vector("aa")
+    )
+    assert(
+      source.readBytes <= 8192,
+      "a nested line must not be buffered in full"
+    )
+    assertEquals(
+      run(
+        fromText("abcdef\r\nxyz\n").lineChars
+          .map(_.take(2).fold("")(_ + _))
+          .fold(Vector.empty[String])(_ :+ _)
+      ),
+      Vector("ab", "xy")
+    )
   }
 
   test("bytes preserve arbitrary binary data across chunk boundaries") {

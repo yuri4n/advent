@@ -1,24 +1,37 @@
-module Year2021.Day04 (parse, part1, part2, samples) where
+{-# LANGUAGE DeriveGeneric #-}
+module Year2021.Day04 (process, part1, part2, examples, puzzle, main) where
 
-import AOC (Sample (..))
+import AOC
+import qualified AOC.Input as Raw
+import AOC.Parsing (record)
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
+import Text.Megaparsec (sepBy1, sepEndBy1)
+import Text.Megaparsec.Char (char, hspace, hspace1)
+import qualified Text.Megaparsec.Char.Lexer as L
 
 import Data.List (transpose, (\\))
-import Data.List.Split (splitOn)
+import Data.List.Split (splitWhen)
 
 type Board = [[Int]]
 
 data Input = Input
     { ballots :: [Int]
     , boards :: [Board]
-    }
+    } deriving Generic
+instance NFData Input
 
-parse :: String -> Input
-parse source = Input
-    { ballots = map read (splitOn "," (head inputLines))
-    , boards = map buildBoard (filter (not . null) (splitOn [""] (drop 1 inputLines)))
+process :: Raw.Input -> Input
+process source = Input
+    { ballots = record (L.decimal `sepBy1` char ',') 1 (head inputLines)
+    , boards = map buildBoard (filter (not . null) (splitWhen (null . snd) (zip [2 ..] (drop 1 inputLines))))
     }
-  where
-    inputLines = lines source
+  where inputLines = Raw.lines source
+
+puzzle :: Day
+puzzle = solution 2021 4 process (Just part1) (Just part2) examples
+main :: IO ()
+main = runAvailable puzzle
 
 -- The original solver already calculates every winning score in order.
 part1 :: Input -> Int
@@ -27,8 +40,8 @@ part1 input = head $ play (ballots input) (boards input) []
 part2 :: Input -> Int
 part2 input = last $ play (ballots input) (boards input) []
 
-buildBoard :: [String] -> Board
-buildBoard str = [map (read :: String -> Int) (words line) | line <- str]
+buildBoard :: [(Int, String)] -> Board
+buildBoard = map (uncurry (record (hspace *> (L.decimal `sepEndBy1` hspace1))))
 
 singleDimWin :: [Int] -> Bool
 singleDimWin = all (== -1)
@@ -53,8 +66,8 @@ play bls brds wscores =
     mrks = [mark bl brd | brd <- brds]
     newbls = drop 1 bls
 
-samples :: [Sample]
-samples = [Sample (unlines
+examples :: [Example Int Int]
+examples = [ExampleBoth (unlines
     [ "7,4,9,5,11,17,23,2,0,14,21,24,10,16,13,6,15,25,12,22,18,20,8,19,3,26,1"
     , ""
     , "22 13 17 11  0"
@@ -74,4 +87,4 @@ samples = [Sample (unlines
     , "18  8 23 26 20"
     , "22 11 13  6  5"
     , " 2  0 12  3  7"
-    ]) (Just "4512") (Just "1924")]
+    ]) 4512 1924]

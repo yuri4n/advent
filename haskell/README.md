@@ -1,66 +1,23 @@
-# Haskell
+# Haskell solutions
 
-Open this directory in your editor. `advent.cabal` is the source of truth and
-`cabal.project` lets Haskell Language Server discover the library, executable,
-and tests. The [Nix and direnv setup](../docs/manual.md#set-up-the-tools) selects
-the Haskell environment on entry after you approve its `.envrc` with
-`direnv allow`. Alternatively, run `nix develop .#haskell` from the repository
-root. With manual toolchains, install HLS built for your GHC version.
-Fourmolu reads `fourmolu.yaml`.
-
-From the repository root:
-
-```sh
-aoc new 2026 1 --lang haskell
-aoc edit 2026 1 --lang haskell
-aoc run 2021 9 --lang haskell --part 1
-aoc test 2021 9 --lang haskell
-```
-
-The adapter requires `ghc`, `cabal`, and Python 3 (only for scaffolding). The
-Nix language shell provides them, matching HLS, and the project's GHC packages.
-For a fresh manual installation, run `cabal update` and `cabal build all` in this
-directory once. Native commands work with the populated dependencies offline:
+This is a Cabal project. Nix supplies GHC with `split` and `megaparsec`, Cabal, and HLS; Stack and hpack are not part of the active workflow.
 
 ```sh
 cabal build all --offline
 cabal test --offline --test-show-details=direct
-cabal run --offline advent-exe -- test 2021 9
-cabal run --offline advent-exe -- run 2021 9 1 < ../data/y21/d09/input.txt
+cabal run advent-exe -- test 2021 6 2
+cabal run advent-exe -- run 2021 6 2 < ../data/y21/d06/input.txt
+runghc -isrc src/Year2021/Day06.hs
 ```
 
-Each day exports pure `parse`, `part1`, `part2`, and `samples`. Change `Input`
-and the result types to fit your solution. Results need a `Show` instance.
-The shared harness handles input, output, selection, and assertions:
+Each day exports `process`, implemented part functions, typed `examples`, a registered `puzzle`, and `main`. The shared processor receives a byte-backed `AOC.Input.Input`. It can select lazy bytes, UTF-8 characters, collected string lines, or nested lazy character lines. It may return a lazy list or build an explicit graph/grid/other value. Both parts reuse the processing code and receive fresh input traversals.
 
-```haskell
-module Year2026.Day01 (parse, part1, part2, samples) where
+Use **Megaparsec directly**. `AOC.Parsing` contains only the `Parser` type alias and complete-record runners with line context. It does not define a second combinator library.
 
-import AOC (Sample (..))
+The `solution` constructor accepts `Just part1` / `Just part2` for implemented parts and `Nothing` for unavailable ones. `Example1`, `Example2`, `ExampleBoth`, and `ExampleInput` associate typed expected answers with their parts. The registry uses each module's `puzzle`.
 
-type Input = String
+Run a day's `main` in the IDE or via `runghc`: it executes available examples and existing central input, skips missing data/parts, and never downloads input. Use `aoc new YEAR DAY --lang haskell` to generate an unimplemented module and update Cabal/registry entries without overwriting files.
 
-parse :: String -> Input
-parse = id
+Native benchmarks measure with and without processing. `NFData` forces the complete prepared input before solve-only timing; immutable values are then reused safely. Custom records can derive `Generic` and declare an `NFData` instance. Ordinary runs retain lazy input. `--wall` remains available for process-level timing.
 
-part1 :: Input -> Integer
-part1 = undefined
-
-part2 :: Input -> Integer
-part2 = undefined
-
-samples :: [Sample]
-samples = []
-```
-
-Add inline assertions with `Sample "sample input" (Just "expected part 1")
-(Just "expected part 2")`; use `Nothing` for a part you are not asserting yet.
-Expected values are the exact `show` representation of the answer. A test with
-no assertions fails. Select one part with `test YEAR DAY 1` or `test YEAR DAY 2`.
-The generated day contains only empty stubs and registers itself in both the
-Cabal manifest and `AOC.Registry`; existing days are never overwritten.
-
-The migrated 2021 day 5 and day 6 solutions only implemented part two. Their
-part-one functions remain `undefined`. The other existing solutions retain
-their original algorithms. The native suite checks six existing sample part
-answers across days 4, 5, 6, and 9.
+Existing algorithms and unfinished parts are preserved. See [the Haskell solution guide](../docs/solutions.md#haskell), [developer manual](../docs/manual.md), and [editor setup](../docs/editors.md).

@@ -1,21 +1,30 @@
 package aoc.solutions.y2021
 
-import aoc.{Day, Sample}
-import kyo.<
+import aoc.{ExampleBoth, Input, Puzzle, Solution}
+import kyo.*
 
-object Day03 extends Day[Int, Int] {
-  type Binary = Seq[Byte]
+object Day03 extends Solution {
+  type Prepared = Vector[Binary]
+  type Answer1  = Int
+  type Binary   = Seq[Byte]
 
-  def parse(input: String): Seq[Binary] =
-    input.linesIterator.map(_.map(_.asDigit.toByte).toSeq).toVector
+  def process(input: Input): Vector[Binary] < Puzzle.Effects =
+    input.lines
+      .map(line =>
+        Parse.runOrAbort(line)(
+          Parse.entireInput(
+            Parse.regex("[01]+").map(_.map(_.asDigit.toByte).toSeq)
+          )
+        )
+      )
+      .fold(Vector.empty[Binary])(_ :+ _)
 
-  def part1(input: String): Int < Any = {
-    val gamma = genGamma(parse(input).transpose)
+  override val part1 = solve { (input: Prepared) =>
+    val gamma = genGamma(input.transpose)
     binaryToInt(gamma) * binaryToInt(genEpsilon(gamma))
   }
 
-  def part2(input: String): Int < Any = {
-    val binaries      = parse(input)
+  override val part2 = solve { (binaries: Prepared) =>
     val processedList = binaries.transpose
     binaryToInt(genOxygenRating(processedList, binaries)) *
       binaryToInt(genCO2Rating(processedList, binaries))
@@ -70,11 +79,11 @@ object Day03 extends Day[Int, Int] {
   def genCO2Rating(transposed: Seq[Seq[Byte]], binaries: Seq[Binary]): Binary =
     genRating(transposed, binaries, inverseByte)
 
-  override val samples = Seq(
-    Sample(
+  override val examples = Seq(
+    ExampleBoth(
       "00100\n11110\n10110\n10111\n10101\n01111\n00111\n11100\n10000\n11001\n00010\n01010\n",
-      Some("198"),
-      Some("230")
+      198,
+      230
     )
   )
 }

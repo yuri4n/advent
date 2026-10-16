@@ -18,15 +18,20 @@ defmodule Advent.Day do
     end
 
     quote do
-      import Advent.Day, only: [sample: 2]
+      import Advent.Day, only: [example: 1, example: 2, sample: 2]
       Module.register_attribute(__MODULE__, :advent_samples, accumulate: true)
       @advent_year unquote(year)
       @advent_day unquote(day)
       @before_compile Advent.Day
+      def run, do: Advent.Runner.auto(__MODULE__)
     end
   end
 
   defmacro sample(input, expectations) do
+    quote do: example(unquote(input), unquote(expectations))
+  end
+
+  defmacro example(input, expectations \\ []) do
     quote do
       @advent_samples Advent.Day.sample!(
                         unquote(input),
@@ -39,7 +44,7 @@ defmodule Advent.Day do
 
   @doc false
   def sample!(input, expectations, file, line) do
-    unless is_binary(input) and Keyword.keyword?(expectations) and expectations != [] and
+    unless is_binary(input) and Keyword.keyword?(expectations) and
              Enum.all?(Keyword.keys(expectations), &(&1 in [:part1, :part2])) do
       raise ArgumentError,
             "sample expects an input string and part1: and/or part2: answers at #{file}:#{line}"
@@ -61,7 +66,10 @@ defmodule Advent.Day do
 
     quote do
       @doc false
-      def __aoc__, do: unquote(Macro.escape(metadata))
+      def __aoc__ do
+        metadata = unquote(Macro.escape(metadata))
+        Map.put(metadata, :examples, metadata.samples)
+      end
     end
   end
 end

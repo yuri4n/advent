@@ -49,21 +49,27 @@ defmodule Advent.SampleSuite do
 
     tests =
       for module <- modules, test <- cases(module, parts) do
-        name = "#{test.year} day #{test.day} part #{test.part} sample #{test.index}"
+        name = "#{test.year} day #{test.day} part #{test.part} example #{test.index}"
         key = if test.part == 1, do: :part1, else: :part2
 
         body =
           if test.sample == nil do
             quote do
-              flunk(unquote("no samples: #{module} has no #{key} expectations"))
+              flunk(unquote("no examples: #{module} has no #{key} expectations"))
             end
           else
             quote do
               expected = unquote(Macro.escape(Map.fetch!(test.sample.expectations, key)))
-              actual = unquote(module).unquote(key)(unquote(test.sample.input))
+
+              actual =
+                Advent.Runner.answer(
+                  unquote(module),
+                  unquote(test.part),
+                  unquote(test.sample.input)
+                )
 
               assert actual == expected,
-                     unquote("inline sample at #{test.sample.file}:#{test.sample.line}")
+                     unquote("inline example at #{test.sample.file}:#{test.sample.line}")
             end
           end
 

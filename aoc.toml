@@ -4,24 +4,34 @@ version = 1
 name = "rust"
 extension = "rs"
 adapter = "scripts/languages/rust.sh"
+native_bench = true
+example_expectations = true
 
 [[languages]]
 name = "go"
 extension = "go"
 adapter = "scripts/languages/go.sh"
+native_bench = true
+example_expectations = true
 
 [[languages]]
 name = "elixir"
 extension = "ex"
 adapter = "scripts/languages/elixir.sh"
+native_bench = true
+example_expectations = true
 
 [[languages]]
 name = "scala"
 extension = "scala"
 adapter = "scripts/languages/scala.sh"
+native_bench = true
+example_expectations = true
 editor_setup = ["bash", "scripts/languages/scala.sh", "editor-setup"]
 
 [[languages]]
 name = "haskell"
 extension = "hs"
 adapter = "scripts/languages/haskell.sh"
+native_bench = true
+example_expectations = true

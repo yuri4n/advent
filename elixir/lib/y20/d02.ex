@@ -1,38 +1,42 @@
 defmodule Advent.Y20.D02 do
   use Advent.Day, year: 2020, day: 2
 
-  sample """
-         1-3 a: abcde
-         1-3 b: cdefg
-         2-9 c: ccccccccc
-         """,
-         part1: 2,
-         part2: 1
+  example(
+    """
+    1-3 a: abcde
+    1-3 b: cdefg
+    2-9 c: ccccccccc
+    """,
+    part1: 2,
+    part2: 1
+  )
 
-  def part1(input) do
+  import NimbleParsec
+
+  defparsec(
+    :policy,
+    integer(min: 1)
+    |> ignore(string("-"))
+    |> integer(min: 1)
+    |> ignore(string(" "))
+    |> ascii_string([?a..?z], 1)
+    |> ignore(string(": "))
+    |> ascii_string([?a..?z], min: 1)
+    |> eos()
+  )
+
+  def process(input) do
     input
-    |> parse()
-    |> Enum.count(&pwd_is_valid?/1)
+    |> Advent.Input.lines()
+    |> Stream.reject(&(&1 == ""))
+    |> Advent.Parse.lines(&policy/1)
+    |> Stream.map(fn [first, last, letter, password] ->
+      {letter, Range.new(first, last), password}
+    end)
   end
 
-  def part2(input) do
-    input
-    |> parse()
-    |> Enum.count(&pwd_is_valid_sp?/1)
-  end
-
-  defp parse(input) do
-    input
-    |> String.split("\n", trim: true)
-    |> Enum.map(&parse_line/1)
-  end
-
-  defp parse_line(line) do
-    [str_range, str_letter, pwd] = String.split(line)
-    [first, last] = String.split(str_range, "-")
-    range = Range.new(String.to_integer(first), String.to_integer(last))
-    {String.trim_trailing(str_letter, ":"), range, pwd}
-  end
+  def part1(input), do: Enum.count(input, &pwd_is_valid?/1)
+  def part2(input), do: Enum.count(input, &pwd_is_valid_sp?/1)
 
   defp pwd_is_valid?({letter, range, pwd}) do
     count = Enum.count(String.graphemes(pwd), &(letter == &1))
