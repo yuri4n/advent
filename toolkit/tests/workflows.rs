@@ -383,12 +383,14 @@ fn editor_fixture(language: &str, extension: &str, source: &str) -> TempDir {
     fs::write(source, "unfinished solution\n").unwrap();
     fs::create_dir_all(dir.path().join("editor/nvim")).unwrap();
     fs::write(dir.path().join("editor/nvim/init.lua"), "-- fixture\n").unwrap();
+    fs::write(dir.path().join("editor/nvim/bootstrap.lua"), "-- fixture\n").unwrap();
     fs::create_dir_all(dir.path().join("bin")).unwrap();
     executable(
         &dir.path().join("bin/nvim"),
         r#"#!/bin/sh
 printf '%s\n' "$@" > "$AOC_ROOT/editor-argv"
 printf '%s\n' "$PWD" "$AOC_ROOT" "$AOC_PROJECT_ROOT" "$AOC_EDITOR_LANGUAGE" "${AOC_NIX_LANGUAGE-unset}" > "$AOC_ROOT/editor-env"
+printf '%s\n' "${AOC_NVIM_BOOTSTRAP-unset}" > "$AOC_ROOT/editor-bootstrap"
 exit "${EDITOR_EXIT:-0}"
 "#,
     );
@@ -404,6 +406,8 @@ fn editor_command(root: &Path, language: &str) -> Command {
         .args(["edit", "22", "1", "--lang", language])
         .env("PATH", root.join("bin"))
         .env_remove("AOC_NIX_LANGUAGE")
+        .env_remove("VISUAL")
+        .env_remove("EDITOR")
         .env_remove("EDITOR_EXIT");
     command
 }
@@ -446,14 +450,22 @@ fn edit_selects_native_projects_and_custom_files_without_a_shell() {
     ] {
         let dir = editor_fixture(language, extension, source);
         let root = dir.path().canonicalize().unwrap();
-        assert_ok(&editor_command(&root, language).output().unwrap());
+        let out = editor_command(&root, language).output().unwrap();
+        assert_ok(&out);
+        assert!(String::from_utf8_lossy(&out.stderr).contains(&format!(
+            "Opening {} in nvim (personal + project, auto)",
+            root.join(source).display()
+        )));
         assert_eq!(
             fs::read_to_string(root.join("editor-argv")).unwrap(),
             format!(
-                "-u\n{}\n--\n{}\n",
-                root.join("editor/nvim/init.lua").display(),
+                "-c\nlua dofile(vim.env.AOC_NVIM_BOOTSTRAP)\n--\n{}\n",
                 root.join(source).display()
             )
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("editor-bootstrap")).unwrap(),
+            format!("{}\n", root.join("editor/nvim/bootstrap.lua").display())
         );
         let project = root.join(project).canonicalize().unwrap();
         assert_eq!(
@@ -480,9 +492,19 @@ fn edit_enters_selected_nix_shell_once_preserving_relative_root_and_cwd() {
         .current_dir(&root)
         .env("PATH", root.join("bin"))
         .env_remove("AOC_NIX_LANGUAGE")
+        .env_remove("VISUAL")
+        .env_remove("EDITOR")
         .output()
         .unwrap();
     assert_ok(&out);
+    let progress = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        progress
+            .matches("Preparing rust environment for nvim")
+            .count(),
+        1
+    );
+    assert_eq!(progress.matches("Opening ").count(), 1);
     let nix = fs::read_to_string(root.join("nix-argv")).unwrap();
     assert_eq!(
         nix,
@@ -509,12 +531,18 @@ fn edit_respects_user_config_current_shell_and_explicit_no_nix() {
         let root = dir.path().canonicalize().unwrap();
         add_nix_fixture(&root, "rust");
         fs::remove_file(root.join("editor/nvim/init.lua")).unwrap();
+        fs::remove_file(root.join("editor/nvim/bootstrap.lua")).unwrap();
         let mut command = editor_command(&root, "rust");
-        command.arg("--user-config").env("AOC_NIX_LANGUAGE", marker);
+        command
+            .arg("--user-config")
+            .env("AOC_NIX_LANGUAGE", marker)
+            .env("AOC_NVIM_BOOTSTRAP", "inherited bootstrap must not be used");
         if no_nix {
             command.arg("--no-nix");
         }
-        assert_ok(&command.output().unwrap());
+        let out = command.output().unwrap();
+        assert_ok(&out);
+        assert!(String::from_utf8_lossy(&out.stderr).contains("in nvim (personal only)"));
         assert!(!root.join("nix-argv").exists());
         assert_eq!(
             fs::read_to_string(root.join("editor-argv")).unwrap(),
@@ -523,6 +551,67 @@ fn edit_respects_user_config_current_shell_and_explicit_no_nix() {
                 root.join("rust/years/y2022/src/d01.rs").display()
             )
         );
+        assert_eq!(
+            fs::read_to_string(root.join("editor-bootstrap")).unwrap(),
+            "unset\n"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_standalone_uses_complete_repository_config_and_conflicts_with_user_only() {
+    let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+    let root = dir.path().canonicalize().unwrap();
+    fs::remove_file(root.join("editor/nvim/bootstrap.lua")).unwrap();
+    let out = editor_command(&root, "rust")
+        .arg("--standalone")
+        .env("AOC_NVIM_BOOTSTRAP", "inherited bootstrap must not be used")
+        .output()
+        .unwrap();
+    assert_ok(&out);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("in nvim (standalone)"));
+    assert_eq!(
+        fs::read_to_string(root.join("editor-argv")).unwrap(),
+        format!(
+            "-u\n{}\n--\n{}\n",
+            root.join("editor/nvim/init.lua").display(),
+            root.join("rust/years/y2022/src/d01.rs").display()
+        )
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("editor-bootstrap")).unwrap(),
+        "unset\n"
+    );
+    let out = editor_command(&root, "rust")
+        .args(["--standalone", "--user-config"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("cannot be used with"));
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_rejects_missing_startup_files_before_entering_nix() {
+    for standalone in [false, true] {
+        let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+        add_nix_fixture(dir.path(), "rust");
+        let file = if standalone {
+            "init.lua"
+        } else {
+            "bootstrap.lua"
+        };
+        fs::remove_file(dir.path().join("editor/nvim").join(file)).unwrap();
+        let mut command = editor_command(dir.path(), "rust");
+        if standalone {
+            command.arg("--standalone");
+        }
+        let out = command.output().unwrap();
+        assert!(!out.status.success());
+        assert!(String::from_utf8_lossy(&out.stderr).contains(file));
+        assert!(!dir.path().join("nix-argv").exists());
+        assert!(!dir.path().join("editor-argv").exists());
     }
 }
 
@@ -588,7 +677,7 @@ fn edit_reports_unavailable_neovim_and_editor_failures() {
     fs::remove_file(dir.path().join("bin/nvim")).unwrap();
     let out = editor_command(dir.path(), "plain").output().unwrap();
     assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("Neovim is unavailable"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("editor \"nvim\" is unavailable"));
 }
 
 #[cfg(unix)]
@@ -667,4 +756,216 @@ fn base_nix_shell_routes_native_actions_once_but_leaves_list_alone() {
             nix
         );
     }
+}
+
+#[cfg(unix)]
+fn fixture_editor(root: &Path, name: &str) {
+    fs::copy(root.join("bin/nvim"), root.join("bin").join(name)).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn editor_selection_honors_override_visual_editor_and_blank_fallback() {
+    for (explicit, visual, editor, selected, flag) in [
+        (
+            Some("cursor --explicit"),
+            "zed --visual",
+            "code --editor",
+            "cursor",
+            "--explicit",
+        ),
+        (None, "zed --visual", "code --editor", "zed", "--visual"),
+        (
+            None,
+            "zeditor --visual",
+            "code --editor",
+            "zeditor",
+            "--visual",
+        ),
+        (None, "  \t", "code --editor", "code", "--editor"),
+        (None, "", " \t ", "nvim", "-c"),
+    ] {
+        let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+        for name in ["zed", "zeditor", "code", "cursor"] {
+            fixture_editor(dir.path(), name);
+        }
+        let mut command = editor_command(dir.path(), "rust");
+        command.env("VISUAL", visual).env("EDITOR", editor);
+        if let Some(explicit) = explicit {
+            command.args(["--editor", explicit]);
+        }
+        let out = command.output().unwrap();
+        assert_ok(&out);
+        assert!(String::from_utf8_lossy(&out.stderr).contains(&format!("in {selected} (")));
+        let args = fs::read_to_string(dir.path().join("editor-argv")).unwrap();
+        assert!(args.starts_with(&format!("{flag}\n")));
+        if selected != "nvim" {
+            assert!(args.ends_with(&format!(
+                "--\n{}\n{}\n",
+                dir.path().join("rust").display(),
+                dir.path().join("rust/years/y2022/src/d01.rs").display()
+            )));
+            assert_eq!(
+                fs::read_to_string(dir.path().join("editor-bootstrap")).unwrap(),
+                "unset\n"
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn generic_editor_command_preserves_quoted_argv_without_shell_evaluation() {
+    let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+    fixture_editor(dir.path(), "custom editor");
+    let program = dir.path().join("bin/custom editor");
+    let marker = dir.path().join("shell-evaluated");
+    let substitution = format!("$(touch {})", marker.display());
+    let configured = format!(
+        "{} --wait 'two words' {} ';' '$HOME'",
+        shlex::try_quote(program.to_str().unwrap()).unwrap(),
+        shlex::try_quote(&substitution).unwrap()
+    );
+    assert_ok(
+        &editor_command(dir.path(), "rust")
+            .args(["--editor", &configured])
+            .output()
+            .unwrap(),
+    );
+    assert!(!marker.exists());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("editor-argv")).unwrap(),
+        format!(
+            "--wait\ntwo words\n{substitution}\n;\n$HOME\n--\n{}\n",
+            dir.path().join("rust/years/y2022/src/d01.rs").display()
+        )
+    );
+    assert!(fs::read_to_string(dir.path().join("editor-env"))
+        .unwrap()
+        .starts_with(&format!("{}\n", dir.path().join("rust").display())));
+}
+
+#[cfg(unix)]
+#[test]
+fn invalid_editor_commands_and_neovim_only_flags_fail_before_nix() {
+    for arguments in [
+        vec!["--editor", ""],
+        vec!["--editor", "zed 'unclosed"],
+        vec!["--editor", "zed", "--standalone"],
+        vec!["--editor", "zed", "--user-config"],
+    ] {
+        let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+        add_nix_fixture(dir.path(), "rust");
+        let out = editor_command(dir.path(), "rust")
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(!out.status.success());
+        let message = String::from_utf8_lossy(&out.stderr);
+        assert!(message.contains("editor command") || message.contains("apply only to Neovim"));
+        assert!(!dir.path().join("nix-argv").exists());
+        assert!(!dir.path().join("editor-argv").exists());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn zed_does_not_need_neovim_files_and_propagates_launch_failure() {
+    let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+    fixture_editor(dir.path(), "zed");
+    fs::remove_dir_all(dir.path().join("editor")).unwrap();
+    let out = editor_command(dir.path(), "rust")
+        .env("VISUAL", "zed --wait")
+        .env("EDITOR_EXIT", "7")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("editor failed"));
+    assert!(fs::read_to_string(dir.path().join("editor-argv"))
+        .unwrap()
+        .starts_with("--wait\n--\n"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("editor-bootstrap")).unwrap(),
+        "unset\n"
+    );
+}
+
+#[cfg(unix)]
+fn fixture_editor_setup(root: &Path) {
+    executable(
+        &root.join("bin/prepare-project"),
+        r#"#!/bin/sh
+printf '%s\n' "$PWD" "$AOC_ROOT" "$AOC_PROJECT_ROOT" "$AOC_EDITOR_LANGUAGE" "$@" > "$AOC_ROOT/project-setup"
+exit "${SETUP_EXIT:-0}"
+"#,
+    );
+    let path = root.join("aoc.toml");
+    let mut config = fs::read_to_string(&path).unwrap();
+    config.push_str(&format!(
+        "editor_setup = [\"{}\", \"argument with spaces\", \"literal;$HOME\"]\n",
+        root.join("bin/prepare-project").display()
+    ));
+    fs::write(path, config).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn editor_project_setup_runs_for_generic_and_personal_only_modes() {
+    for (editor, mode, expected) in [
+        ("zed", None, true),
+        ("nvim", Some("--user-config"), true),
+        ("nvim", None, false),
+        ("nvim", Some("--standalone"), false),
+    ] {
+        let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+        fixture_editor(dir.path(), "zed");
+        fixture_editor_setup(dir.path());
+        let mut command = editor_command(dir.path(), "rust");
+        command.args(["--editor", editor]).env_remove("SETUP_EXIT");
+        if let Some(mode) = mode {
+            command.arg(mode);
+        }
+        assert_ok(&command.output().unwrap());
+        assert_eq!(dir.path().join("project-setup").exists(), expected);
+        if expected {
+            assert_eq!(
+                fs::read_to_string(dir.path().join("project-setup")).unwrap(),
+                format!(
+                    "{}\n{}\n{}\nrust\nargument with spaces\nliteral;$HOME\n",
+                    dir.path().display(),
+                    dir.path().display(),
+                    dir.path().join("rust").display()
+                )
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn editor_project_setup_errors_prevent_launching_editor() {
+    let dir = editor_fixture("rust", "rs", "rust/years/y2022/src/d01.rs");
+    fixture_editor(dir.path(), "zed");
+    fixture_editor_setup(dir.path());
+    let out = editor_command(dir.path(), "rust")
+        .env("VISUAL", "zed")
+        .env("SETUP_EXIT", "9")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("editor project setup failed"));
+    assert!(!dir.path().join("editor-argv").exists());
+    let config = dir.path().join("aoc.toml");
+    let contents = fs::read_to_string(&config).unwrap();
+    let prefix = contents.split("editor_setup =").next().unwrap();
+    fs::write(config, format!("{prefix}editor_setup = []\n")).unwrap();
+    let out = editor_command(dir.path(), "rust")
+        .env("VISUAL", "zed")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("editor_setup must contain an executable")
+    );
+    assert!(!dir.path().join("editor-argv").exists());
 }

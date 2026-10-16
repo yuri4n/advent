@@ -19,6 +19,7 @@ adapter = "scripts/languages/elixir.sh"
 name = "scala"
 extension = "scala"
 adapter = "scripts/languages/scala.sh"
+editor_setup = ["bash", "scripts/languages/scala.sh", "editor-setup"]
 
 [[languages]]
 name = "haskell"

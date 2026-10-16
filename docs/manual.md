@@ -103,7 +103,7 @@ The built-in language names are `rust`, `go`, `elixir`, `scala`, and `haskell`. 
 | Command | Purpose |
 | --- | --- |
 | `new YEAR DAY --lang LANG` | Create an unfinished solution and native build registration. |
-| `edit YEAR DAY --lang LANG [--user-config] [--no-nix]` | Open an existing solution in Neovim with the selected language environment. |
+| `edit YEAR DAY --lang LANG [--editor COMMAND] [--standalone\|--user-config] [--no-nix]` | Open an existing solution in your selected editor and language environment. |
 | `run YEAR DAY --lang LANG --part 1\|2\|both [--input PATH] [--time]` | Run the selected part or both parts. |
 | `test YEAR DAY --lang LANG [--part 1\|2\|both]` | Check the day's inline sample assertions. |
 | `bench YEAR DAY --lang LANG --part 1\|2\|both [--iterations N] [--warmup N] [--input PATH]` | Run warmups followed by repeated timed executions. |
@@ -118,7 +118,21 @@ Run `aoc --help` for the command syntax supported by the installed checkout.
 
 Both `2022` and `22` select year 2022. Days are 1–25; `--part` defaults to `both`. Watch reruns the solution after changes, including central input edits; it does not run sample tests automatically. Run `test` separately when updating a sample.
 
-`edit` opens the solution using the repository's minimal Neovim configuration and the native language project as its working directory. Create a missing day with `new` first; editing never creates it implicitly. `--user-config` keeps your own Neovim configuration, and `--no-nix` uses tools from the current environment. Outside a Nix shell, `edit` enters the selected language shell when Nix and the corresponding shell definition are available. See [the editor guide](editors.md#neovim) for navigation, diagnostics, and formatting shortcuts.
+`edit` chooses its command in this order: `--editor COMMAND`, nonblank `VISUAL`, nonblank `EDITOR`, then `nvim`. It runs from the native language project and opens the existing solution; Zed receives both the project directory and solution path. Create a missing day with `new` first; editing never creates it implicitly.
+
+For Zed, select it once or make it your shell's preferred editor:
+
+```sh
+aoc edit 2021 1 --lang scala --editor zed
+export VISUAL='zed --wait'
+aoc edit 2021 1 --lang scala
+```
+
+The optional `--wait` keeps the terminal command waiting for the editor; omit it for a normal GUI handoff. Install Zed and its command-line launcher locally. Editor commands may contain quoted arguments but are executed directly, without shell evaluation.
+
+When the selected editor is Neovim, normal startup loads your personal configuration before adding the AoC project/LSP integration. Neovim's configuration lookup, including `NVIM_APPNAME`, applies; bundled defaults are used when startup has no existing configuration. The Neovim-only flags `--standalone` and `--user-config` select the isolated bundled setup or personal configuration alone, respectively, and are mutually exclusive.
+
+Add `--no-nix` to use tools from the current environment. Otherwise, `edit` enters the selected language shell when Nix and the corresponding shell definition are available. Scala's BSP metadata is prepared before launching Zed or another external editor, including Neovim's personal-only mode. The normal Neovim overlay prepares it asynchronously when needed. See [the editor guide](editors.md) for Zed setup and [Neovim modes and troubleshooting](editors.md#neovim).
 
 ## Inputs, samples, and offline use
 
@@ -251,6 +265,8 @@ object Day01 extends Day[Long, Long] {
   override val samples: Seq[Sample] = Seq.empty
 }
 ```
+
+`???` is a valid Scala placeholder that throws when evaluated. A generated day can therefore compile without editor diagnostics while remaining unfinished; running the selected part exposes the stub.
 
 `Answer < Any` means an effect-free Kyo computation. Write an ordinary expression as the function body: Kyo lifts its value automatically, so pure solutions need no `IO` wrapper. Keep the return annotation `Answer < Any`; a plain `Answer` return annotation cannot override the `Day` contract. Parsing and algorithm helpers remain ordinary functions returning plain values, with no mandatory parse interface. See [the migrated day 1](../scala/src/main/scala/aoc/solutions/y2021/Day01.scala) for a complete example.
 
@@ -389,6 +405,14 @@ Modules receive `pkgs` and the pinned `rust` toolchain, and may also return an `
 
 For the bundled Neovim setup, add an optional matching `editor/nvim/languages/python.lua` module using the [editor module contract](editors.md#add-a-neovim-language). The CLI registration, Nix toolchain module, Neovim server module, and native project metadata serve different purposes and should use the same language name.
 
+A language's `aoc.toml` entry can also provide an `editor_setup` argument array to prepare project metadata before an external editor opens. Scala uses:
+
+```toml
+editor_setup = ["bash", "scripts/languages/scala.sh", "editor-setup"]
+```
+
+The command runs from the repository root with `AOC_ROOT`, `AOC_PROJECT_ROOT`, and `AOC_EDITOR_LANGUAGE` available, and a failure stops editor launch. Arguments are passed literally. This hook runs for external editors and Neovim's `--user-config` mode; the AoC Neovim overlay uses its language module's optional `prepare` callback instead.
+
 ## Troubleshooting
 
 - `aoc` is missing: check that the direnv hook is enabled and this checkout's `.envrc` is approved, or enter `nix develop`. For manual toolchains, use `./aoc` from the repository root.
@@ -398,5 +422,5 @@ For the bundled Neovim setup, add an optional matching `editor/nvim/languages/py
 - A sample command fails with no assertions: supply a real inline sample and its expected answer for that part.
 - Rust compile-time input fails: check the path used by the embedding macro and ensure the file exists before compiling.
 - HLS cannot load a component: use an HLS build compatible with the selected GHC and run `cabal build all`.
-- Metals cannot import the build: run `scala-cli setup-ide . --server=false` from `scala/` and reconnect the build server.
+- Metals cannot import the build: run `bash scripts/languages/scala.sh editor-setup` from the repository root and reconnect the build server.
 - A download fails: verify the network connection and, for your input, the current session secret. Keep TLS and checksum validation enabled.

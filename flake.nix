@@ -58,6 +58,15 @@
               platforms = systems;
             };
           };
+          editorCheck = pkgs.runCommand "advent-editor-checks" {
+            nativeBuildInputs = [ pkgs.neovim pkgs.python3 ];
+          } ''
+            cp -R ${./editor} editor
+            chmod -R u+w editor
+            patchShebangs editor/nvim/tests
+            python3 editor/nvim/tests/run.py --nvim ${pkgs.neovim}/bin/nvim
+            touch "$out"
+          '';
           # Adding nix/languages/<name>.nix also adds a named development shell.
           languageFiles = pkgs.lib.filterAttrs
             (name: type: type == "regular" && pkgs.lib.hasSuffix ".nix" name)
@@ -70,7 +79,7 @@
               (import (./nix/languages + "/${file}") { inherit pkgs rust; }))
             languageFiles;
         in {
-          inherit aoc;
+          inherit aoc editorCheck;
           formatter = pkgs.nixfmt-rfc-style;
           shells =
             let
@@ -124,6 +133,7 @@
       devShells = forEachSystem (system: environments.${system}.shells);
       checks = forEachSystem (system: {
         aoc = environments.${system}.aoc;
+        editor = environments.${system}.editorCheck;
       });
       formatter = forEachSystem (system: environments.${system}.formatter);
     };

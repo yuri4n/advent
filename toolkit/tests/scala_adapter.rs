@@ -43,3 +43,51 @@ fn scala_build_handles_an_unset_or_enabled_offline_option() {
             .any(|arg| arg == "--coursier-validate-checksums"));
     }
 }
+
+#[test]
+fn scala_editor_setup_records_an_executable_launcher_and_native_project() {
+    let temp = tempfile::Builder::new()
+        .prefix("aoc editor setup ")
+        .tempdir()
+        .unwrap();
+    fs::create_dir(temp.path().join("scala")).unwrap();
+    let compiler = temp.path().join("scala-cli wrapper");
+    fs::write(
+        &compiler,
+        "#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$@\" > \"$SCALA_ARGS\"\nexit \"${SCALA_EXIT:-0}\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&compiler, fs::Permissions::from_mode(0o755)).unwrap();
+    let arguments = temp.path().join("arguments");
+    let adapter = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/languages/scala.sh");
+
+    for code in [0, 17] {
+        let output = Command::new("bash")
+            .arg(&adapter)
+            .arg("editor-setup")
+            .current_dir(temp.path())
+            .env("AOC_ROOT", temp.path())
+            .env("SCALA_CLI", "./scala-cli wrapper")
+            .env("SCALA_ARGS", &arguments)
+            .env("SCALA_EXIT", code.to_string())
+            .env("AOC_OFFLINE", "1")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(code), "{:?}", output);
+        let actual = fs::read_to_string(&arguments).unwrap();
+        let args: Vec<_> = actual.lines().collect();
+        assert_eq!(args[0], temp.path().join("scala").to_str().unwrap());
+        assert_eq!(args[1..3], ["--power", "--initial-launcher-path"]);
+        assert_eq!(Path::new(args[3]).canonicalize().unwrap(), compiler);
+        assert_eq!(
+            args[4..],
+            [
+                "setup-ide",
+                ".",
+                "--server=false",
+                "--coursier-validate-checksums",
+                "--offline"
+            ]
+        );
+    }
+}

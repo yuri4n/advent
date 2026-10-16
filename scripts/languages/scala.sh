@@ -22,8 +22,24 @@ build() {
   (cd "$project" && "$scala_cli" --power package . --assembly --server=false --coursier-validate-checksums \
     ${offline_option:+"$offline_option"} --main-class aoc.Main --output "$jar" --force) >&2
 }
+editor_setup() {
+  local launcher
+  launcher=$(command -v "$scala_cli") || fail 'install scala-cli, or set SCALA_CLI to its executable'
+  # Keep the launcher executable in BSP metadata, including Java wrappers and
+  # relative PATH entries. A bare bootstrapped JAR cannot be executed by Metals.
+  [[ "$launcher" == /* ]] || launcher="$PWD/$launcher"
+  [[ -x "$launcher" ]] || fail "Scala CLI launcher is not executable: $launcher"
+  local offline_option=
+  [[ "${AOC_OFFLINE:-0}" == 1 ]] && offline_option=--offline
+  (cd "$project" && "$launcher" --power --initial-launcher-path "$launcher" \
+    setup-ide . --server=false --coursier-validate-checksums ${offline_option:+"$offline_option"})
+}
 
 case "${1:-}" in
+  editor-setup)
+    [[ $# == 1 ]] || fail 'usage: editor-setup'
+    editor_setup
+    ;;
   build)
     [[ $# == 2 && "$2" =~ ^[0-9]{4}$ ]] || fail 'usage: build YEAR'
     build
@@ -72,5 +88,5 @@ EOF
     "$scala_cli" version
     "$java_command" -version
     ;;
-  *) fail 'usage: scala.sh build YEAR | run YEAR DAY PART | test YEAR DAY [PART] | new YEAR DAY | doctor' ;;
+  *) fail 'usage: scala.sh build YEAR | run YEAR DAY PART | test YEAR DAY [PART] | new YEAR DAY | editor-setup | doctor' ;;
 esac

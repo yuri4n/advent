@@ -4,7 +4,7 @@ The repository supplies native project metadata, shared formatting defaults, and
 
 ## Load the development environment
 
-Complete the [Nix and direnv setup](manual.md#set-up-the-tools), including explicit `direnv allow` approval for the root and the language directories you use. The base shell contains common utilities and Neovim; each language shell adds its compiler and language server. `aoc edit` selects that environment for you. For another editor, start it from the relevant language shell or configure its direnv integration to load the approved project environment.
+Complete the [Nix and direnv setup](manual.md#set-up-the-tools), including explicit `direnv allow` approval for the root and the language directories you use. The base shell contains common utilities and Neovim; each language shell adds its compiler and language server. `aoc edit` selects the language environment and your preferred editor. It uses `--editor COMMAND` first, then nonblank `VISUAL`, nonblank `EDITOR`, and finally Neovim. GUI editors and their language extensions are installed separately on your machine.
 
 For the multi-language VS Code workspace, select all toolchains from the repository root:
 
@@ -39,14 +39,13 @@ If rust-analyzer cannot find the projects when the repository root alone is open
 
 Go has one module, so `go.work` is unnecessary. Open `go/` to give gopls the correct module root. Elixir solutions use compiled `.ex` modules with `Advent.Day` declarations, so Mix and ElixirLS see them without executing standalone scripts. The native `mix aoc.run`, `mix aoc.test`, and `mix aoc.new` tasks can be used directly in an editor terminal; see the [Elixir language guide](manual.md#elixir).
 
-Generate Scala's BSP metadata on your own machine:
+Generate Scala's BSP metadata from the repository root on your own machine:
 
 ```sh
-cd scala
-scala-cli setup-ide . --server=false
+bash scripts/languages/scala.sh editor-setup
 ```
 
-Then import or reconnect the build in Metals. Generated `.bsp`, `.scala-build`, and `.metals` files are local machine data; do not commit their absolute paths.
+The helper records an executable Scala CLI launcher in the BSP metadata, including when Scala CLI uses a Java wrapper. Then import or reconnect the build in Metals. Generated `.bsp`, `.scala-build`, and `.metals` files are local machine data; do not commit their absolute paths.
 
 Metals is the recommended Scala setup. Importing the build makes the pinned Scala compiler, Kyo dependency, and compiler options available to the language server. Ordinary `Day` solutions return effect-free `Answer < Any` computations, with optional Kyo parallelism and effects; `StreamingDay` supplies streaming input. See the [Scala language guide](manual.md#scala) for both APIs, inline samples, and native test commands. Reimport the build after changing dependency directives.
 
@@ -70,18 +69,62 @@ Compilation diagnostics come from the language extension and native compiler out
 
 No workspace setting stores a session cookie or tool installation path. New-day generation does not rewrite editor preferences.
 
+## Zed
+
+Install Zed and enable its `zed` command-line launcher, then open a day from anywhere in the checkout:
+
+```sh
+aoc edit 2021 1 --lang scala --editor zed
+```
+
+Some Linux packages name the launcher `zeditor`; use `--editor zeditor` for that installation.
+
+The command passes both the native project directory and solution file to Zed. Opening the full project makes its shared harness and build metadata available for navigation and diagnostics. Zed 0.152 or later [forwards the command-line environment](https://github.com/zed-industries/zed/blob/main/docs/src/environment.md) even to an already-running instance, so launching through `aoc edit` supplies the selected Nix tools to the project.
+
+Install the Zed language extensions needed for your languages. Scala uses [the Scala extension backed by Metals](https://github.com/scalameta/metals-zed). Before opening Scala in Zed, `aoc edit` prepares its BSP project metadata with the selected toolchain. Its first import may download dependencies and index the project. This integration needs no changes to your global Zed settings.
+
+To use Zed for future `aoc edit` commands, set your preference in the shell:
+
+```sh
+export VISUAL='zed --wait'
+```
+
+`--wait` is optional; omit it if you want the terminal command to return after handing the project to Zed. `--editor zed` overrides a different shell preference for one command. Editor commands are parsed into an executable and quoted arguments and run directly. Shell pipelines, redirects, variable expansion, `~` expansion, and command substitution are not evaluated; use an executable on `PATH` or an absolute path.
+
 ## Neovim
 
 Open an existing day from anywhere in the checkout:
 
 ```sh
-aoc edit 2021 1 --lang scala
-aoc edit 2022 1 --lang rust
+aoc edit 2021 1 --lang scala --editor nvim
+aoc edit 2022 1 --lang rust --editor nvim
 ```
 
-The command opens the solution with [the repository Neovim configuration](../editor/nvim/init.lua), using the native language project as its working directory. It selects the corresponding Nix shell when available, so Neovim and the language server see the same tools. A missing solution produces a `new` instruction instead of creating a file implicitly.
+The command starts Neovim normally, loads your personal configuration, then adds the AoC project and language-server integration. Neovim's usual configuration lookup applies, including `NVIM_APPNAME`; the working directory is the native language project. It selects the corresponding Nix shell when available, so Neovim and the language server see the same tools. A missing solution produces a `new` instruction instead of creating a file implicitly.
 
-The default setup uses Neovim 0.11 or later and its built-in LSP client and completion. It installs no plugins and does not change your personal editor configuration. Each language server is rooted at the complete native project, including shared harness code. For Scala, the editor refreshes Scala CLI's local BSP metadata before starting Metals, so its launcher paths match the selected environment; editing remains available during that preparation.
+Choose the configuration mode that fits the session:
+
+| Command option | Configuration |
+| --- | --- |
+| No extra flag | Your normal configuration plus AoC project/LSP integration; bundled defaults if startup has no existing configuration. |
+| `--standalone` | The isolated [bundled configuration](../editor/nvim/init.lua). |
+| `--user-config` | Your normal configuration alone, with no AoC overlay. |
+
+```sh
+aoc edit 2021 1 --lang scala --editor nvim
+aoc edit 2021 1 --lang scala --editor nvim --standalone
+aoc edit 2021 1 --lang scala --editor nvim --user-config
+```
+
+`--standalone` and `--user-config` are Neovim-only options and cannot be combined. Add `--no-nix` to any mode to use tools already on `PATH`.
+
+The command reports when it is preparing a language environment, then identifies the solution and configuration mode being opened. The first Nix preparation can take time while tools download or build.
+
+The AoC integration needs Neovim 0.11 or later and uses its built-in LSP client. It installs no plugins and does not modify your configuration files. With an existing configuration, the overlay preserves its options, runtime plugins, mappings, diagnostic display, and completion setup. It respects matching enabled or starting language servers; if your setup attaches its own matching server later, the overlay stops only its fallback server.
+
+When a server is needed, the AoC module roots it at the complete native project, including shared harness code. For Scala, the module prepares local BSP metadata before starting Metals. An existing personal Metals setup keeps control of its own preparation. Editing remains available while AoC preparation runs.
+
+The bundled defaults provide these shortcuts:
 
 | Key | Action |
 | --- | --- |
@@ -95,9 +138,19 @@ The default setup uses Neovim 0.11 or later and its built-in LSP client and comp
 | `Space q` | Open the diagnostics location list. |
 | `Ctrl-Space` in insert mode | Request completion; supported servers also trigger it automatically. |
 
-LSP navigation and editing actions become available when the server attaches. Formatting is manual; the configuration does not format or save automatically. Use ordinary Neovim commands such as `:w` to save and `:q` to quit.
+These mappings and built-in completion apply to standalone or unconfigured sessions; configured sessions keep their own mappings and completion. LSP navigation and editing actions become available when the server attaches. The bundled defaults show inline diagnostics and support manual formatting; they do not format or save automatically. Use ordinary Neovim commands such as `:w` to save and `:q` to quit.
 
-To keep your own editor setup, use `aoc edit YEAR DAY --lang LANG --user-config`. To use tools already on `PATH`, add `--no-nix`; both options can be combined. Custom languages open with the same command; add a language server module below or use your own Neovim configuration.
+Custom languages open with the same command; add a language server module below or use your own Neovim configuration.
+
+### Diagnose editor startup or language-server problems
+
+Use `:messages` to inspect startup errors and `:checkhealth vim.lsp` to inspect language-server setup. To see the configuration directory Neovim selected, run `:lua print(vim.fn.stdpath("config"))`; this is particularly useful with `NVIM_APPNAME`.
+
+Check that the server is available in the selected environment, for example `:lua print(vim.fn.exepath("rust-analyzer"))` for Rust. An empty result means the executable is missing from the editor's `PATH`. Select the language's Nix shell or install that server for a manual toolchain. For Scala metadata errors, run `bash scripts/languages/scala.sh editor-setup` from the repository root and read its output.
+
+Scala's first setup may download compiler dependencies and then import and index the project. AoC reports preparation, metadata readiness, Metals startup, and attachment as separate stages. Attachment establishes the language-server connection; build import and diagnostics may still be running. Use `:messages` and LSP health to check progress or failures. Scala's `???` placeholder is valid code and normally produces no compiler diagnostic. Running an unfinished part exposes that placeholder at runtime.
+
+If a theme, plugin, or personal LSP setup fails with the selected Neovim version, compare `--standalone` and `--user-config` sessions. Those modes help distinguish a personal-configuration problem from an interaction with the AoC overlay. Existing configurations can have version-specific requirements; check their startup errors before changing settings.
 
 ### Add a Neovim language
 
@@ -106,6 +159,7 @@ Language server definitions live in `editor/nvim/languages/NAME.lua`. Adding a m
 ```lua
 return function()
   return {
+    aliases = { "pyright" },
     server = {
       cmd = { "pyright-langserver", "--stdio" },
       filetypes = { "python" },
@@ -114,9 +168,9 @@ return function()
 end
 ```
 
-The function receives a context table containing `repository_root`, `project_root`, and `language` if it needs them. Return a `server` table using Neovim's standard `vim.lsp.Config` fields, including an executable command array. The shared initializer supplies the project root, completion, and keymaps.
+The function receives a context table containing `repository_root`, `project_root`, and `language` if it needs them. Return a `server` table using Neovim's standard `vim.lsp.Config` fields, including an executable command array. Optional `aliases` names let the overlay recognize existing server configurations. The shared overlay supplies the project root when it starts a fallback server; completion and keymaps are added only for standalone or unconfigured sessions.
 
-A module may also return `prepare = function(start_server) ... end` for setup such as Scala's BSP refresh. Call `start_server` once on the main event loop after setup succeeds; use `vim.schedule_wrap` for an asynchronous `vim.system` callback. On failure, report an actionable message and leave the file available for editing. See [the Scala module](../editor/nvim/languages/scala.lua) for that pattern.
+A module may also return `prepare = function(start_server) ... end` for setup such as Scala's BSP refresh. It runs only when the AoC fallback is needed. Call `start_server` once on the main event loop after setup succeeds; use `vim.schedule_wrap` for an asynchronous `vim.system` callback. On failure, report an actionable message and leave the file available for editing. Optional `status` messages can describe `starting`, `attached`, and `reusing` stages. See [the Scala module](../editor/nvim/languages/scala.lua) for that pattern.
 
 ## Emacs, Helix, and other LSP clients
 
@@ -151,6 +205,8 @@ The repository does not commit a universal `launch.json`: executable paths, debu
 
 ## What is verified
 
-Headless checks through `aoc edit` with Neovim 0.11.5 confirmed that rust-analyzer attaches at the Rust workspace containing the shared harness; go-to-definition into that harness was also checked. Custom language-module discovery and asynchronous preparation passed with a server fixture. Scala CLI's BSP metadata refresh passed; live Metals behavior remains unverified. Missing-server and failed-BSP paths keep the editor usable and report how to recover.
+Twenty headless startup tests using Neovim 0.11.5 and a fixture LSP server pass. They cover personal configuration discovery and preservation, standalone defaults, initial-buffer attachment, diagnostics, existing and delayed personal servers, and recoverable startup failures. Run them from the repository root with `python3 editor/nvim/tests/run.py`; `--nvim /path/to/nvim` selects another Neovim executable. The Nix `editor` check is configured to run the same regressions.
+
+Actual rust-analyzer attachment and navigation into the shared Rust harness were checked. With the revised startup, Metals 1.6.3 reported an intentional type error in the Scala 3.7.3/Kyo 0.19.0 project and resolved a definition into the shared `Day` harness. Scala's editor-setup helper successfully generated an executable BSP launcher. Zed launch arguments and native project preparation were checked; an interactive Zed GUI session was not available in the cloud environment.
 
 The workspace and task files are JSON, use repository-relative paths, and delegate to the shared CLI. Native build/test validation is separate from a full interactive editor session. Completion, diagnostics, formatting plugins, and breakpoint support depend on the installed editor/server versions; they are not claimed to have been exercised in every editor.

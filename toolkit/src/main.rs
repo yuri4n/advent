@@ -82,13 +82,19 @@ struct Run {
 enum Action {
     /// Create empty solution stubs and register them with the native build tool.
     New(Target),
-    /// Open a solution in Neovim with its project's language server and toolchain.
+    /// Open a solution and its project using --editor, VISUAL, EDITOR, or Neovim.
     Edit {
         #[command(flatten)]
         target: Target,
-        /// Use your own Neovim configuration instead of the repository's setup.
+        /// Editor command and arguments, e.g. 'zed --wait'; parsed without a shell.
         #[arg(long)]
+        editor: Option<String>,
+        /// Use only your Neovim configuration, without the Advent overlay.
+        #[arg(long, conflicts_with = "standalone")]
         user_config: bool,
+        /// Use the repository's complete Neovim setup without your configuration.
+        #[arg(long)]
+        standalone: bool,
         /// Use tools already on PATH instead of entering a Nix language shell.
         #[arg(long)]
         no_nix: bool,
@@ -176,6 +182,8 @@ struct Language {
     build: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    editor_setup: Option<Vec<String>>,
 }
 fn parse_year(value: &str) -> std::result::Result<u16, String> {
     let mut year = value.parse::<u16>().map_err(|_| "year must be a number")?;
@@ -288,52 +296,180 @@ fn editor_paths(root: &Path, lang: &Language, day: &Day) -> Result<(PathBuf, Pat
     }
     Ok((project, source))
 }
+fn executable_file(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    true
+}
 fn executable_on_path(name: &str) -> Option<PathBuf> {
+    let direct = Path::new(name);
+    if direct.is_absolute() || direct.components().count() > 1 {
+        return executable_file(direct)
+            .then(|| direct.canonicalize().ok())
+            .flatten();
+    }
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths)
             .map(|path| path.join(name))
-            .find(|path| {
-                let Ok(metadata) = fs::metadata(path) else {
-                    return false;
-                };
-                if !metadata.is_file() {
-                    return false;
-                }
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    metadata.permissions().mode() & 0o111 != 0
-                }
-                #[cfg(not(unix))]
-                true
-            })
+            .find(|path| executable_file(path))
             .and_then(|path| path.canonicalize().ok())
     })
 }
-fn edit(root: &Path, lang: &Language, day: &Day, user_config: bool) -> Result<()> {
-    let (project, source) = editor_paths(root, lang, day)?;
-    let init = root.join("editor/nvim/init.lua");
-    if !user_config && !init.is_file() {
+struct Editor {
+    program: String,
+    arguments: Vec<String>,
+    name: String,
+}
+impl Editor {
+    fn select(explicit: Option<&str>) -> Result<Self> {
+        let configured = explicit.map(str::to_owned).or_else(|| {
+            ["VISUAL", "EDITOR"]
+                .iter()
+                .find_map(|name| env::var(name).ok().filter(|value| !value.trim().is_empty()))
+        });
+        let words = shlex::split(configured.as_deref().unwrap_or("nvim"))
+            .ok_or("editor command has unmatched quotes; use a quoted executable and arguments")?;
+        let mut words = words.into_iter();
+        let program = words
+            .next()
+            .filter(|value| !value.is_empty())
+            .ok_or("editor command cannot be empty")?;
+        let filename = Path::new(&program)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("editor command needs an executable filename")?;
+        let name = filename.strip_suffix(".exe").unwrap_or(filename).to_owned();
+        Ok(Self {
+            program,
+            arguments: words.collect(),
+            name,
+        })
+    }
+    fn neovim(&self) -> bool {
+        self.name == "nvim"
+    }
+    fn opens_project(&self) -> bool {
+        matches!(
+            self.name.as_str(),
+            "zed" | "zeditor" | "code" | "code-insiders" | "cursor"
+        )
+    }
+    fn validate_mode(&self, user_config: bool, standalone: bool) -> Result<()> {
+        if !self.neovim() && (user_config || standalone) {
+            return Err("--standalone and --user-config apply only to Neovim; choose --editor nvim or omit those flags".into());
+        }
+        Ok(())
+    }
+}
+fn editor_config(root: &Path, user_config: bool, standalone: bool) -> Result<Option<PathBuf>> {
+    if user_config {
+        return Ok(None);
+    }
+    let config = root.join(if standalone {
+        "editor/nvim/init.lua"
+    } else {
+        "editor/nvim/bootstrap.lua"
+    });
+    if !config.is_file() {
         return Err(format!(
             "repository Neovim configuration is missing: {}; use --user-config for your own setup",
-            init.display()
+            config.display()
         )
         .into());
     }
-    let nvim = executable_on_path("nvim").ok_or(
-        "Neovim is unavailable; install it or enter the repository's Nix development shell",
-    )?;
-    let mut command = Command::new(nvim);
-    if !user_config {
-        command.arg("-u").arg(init);
+    Ok(Some(config))
+}
+fn prepare_editor_project(root: &Path, project: &Path, lang: &Language) -> Result<()> {
+    let Some(arguments) = &lang.editor_setup else {
+        return Ok(());
+    };
+    let (program, arguments) = arguments
+        .split_first()
+        .filter(|(program, _)| !program.trim().is_empty())
+        .ok_or("language editor_setup must contain an executable followed by optional arguments")?;
+    eprintln!("Preparing {} editor project…", lang.name);
+    let status = Command::new(program)
+        .args(arguments)
+        .current_dir(root)
+        .env("AOC_ROOT", root)
+        .env("AOC_PROJECT_ROOT", project)
+        .env("AOC_EDITOR_LANGUAGE", &lang.name)
+        .stdin(Stdio::null())
+        .status()?;
+    if !status.success() {
+        return Err(format!("editor project setup failed ({status})").into());
+    }
+    Ok(())
+}
+fn edit(
+    root: &Path,
+    lang: &Language,
+    day: &Day,
+    editor_command: Option<&str>,
+    user_config: bool,
+    standalone: bool,
+) -> Result<()> {
+    let (project, source) = editor_paths(root, lang, day)?;
+    let editor = Editor::select(editor_command)?;
+    editor.validate_mode(user_config, standalone)?;
+    let config = if editor.neovim() {
+        editor_config(root, user_config, standalone)?
+    } else {
+        None
+    };
+    let executable = executable_on_path(&editor.program).ok_or_else(|| {
+        format!(
+            "editor {:?} is unavailable; install it or choose --editor COMMAND (also VISUAL or EDITOR)",
+            editor.program
+        )
+    })?;
+    if !editor.neovim() || user_config {
+        prepare_editor_project(root, &project, lang)?;
+    }
+    let mut command = Command::new(executable);
+    command.args(&editor.arguments);
+    command.env_remove("AOC_NVIM_BOOTSTRAP");
+    if let Some(config) = config {
+        if standalone {
+            command.arg("-u").arg(config);
+        } else {
+            // Normal Neovim startup loads the user's configuration first. Keep
+            // repository paths in the environment, never interpolated into Lua.
+            command
+                .args(["-c", "lua dofile(vim.env.AOC_NVIM_BOOTSTRAP)"])
+                .env("AOC_NVIM_BOOTSTRAP", config);
+        }
+    }
+    command.arg("--");
+    if editor.opens_project() {
+        command.arg(&project);
     }
     command
-        .arg("--")
-        .arg(source)
+        .arg(&source)
         .current_dir(&project)
         .env("AOC_ROOT", root)
         .env("AOC_PROJECT_ROOT", &project)
         .env("AOC_EDITOR_LANGUAGE", &lang.name);
+    let mode = if !editor.neovim() {
+        "configured command"
+    } else if user_config {
+        "personal only"
+    } else if standalone {
+        "standalone"
+    } else {
+        "personal + project, auto"
+    };
+    eprintln!("Opening {} in {} ({mode})…", source.display(), editor.name);
     let status = command.status()?;
     if !status.success() {
         return Err(format!("editor failed ({status})").into());
@@ -349,14 +485,18 @@ fn enter_language_shell(root: &Path, cfg: &Config, action: &Action) -> Result<bo
         Action::Edit { no_nix: true, .. } => return Ok(false),
         Action::Edit {
             target,
+            editor,
             user_config,
+            standalone,
             ..
         } => {
             // Reject a missing solution before asking Nix to download a toolchain.
             let lang = language(cfg, &target.lang)?;
             editor_paths(root, lang, &target.day)?;
-            if !user_config && !root.join("editor/nvim/init.lua").is_file() {
-                return Ok(false); // edit provides the configuration error.
+            let editor = Editor::select(editor.as_deref())?;
+            editor.validate_mode(*user_config, *standalone)?;
+            if editor.neovim() {
+                editor_config(root, *user_config, *standalone)?;
             }
             (target.lang.as_str(), true)
         }
@@ -381,6 +521,12 @@ fn enter_language_shell(root: &Path, cfg: &Config, action: &Action) -> Result<bo
     };
     let mut flake = root.as_os_str().to_os_string();
     flake.push(format!("#{name}"));
+    if let Action::Edit { editor, .. } = action {
+        eprintln!(
+            "Preparing {name} environment for {}…",
+            Editor::select(editor.as_deref())?.name
+        );
+    }
     // Re-enter once around the whole action, keeping Nix startup out of benchmarks
     // and preserving relative --root and --input paths by retaining the caller's cwd.
     let status = Command::new(nix)
@@ -611,13 +757,17 @@ fn execute(cli: Cli) -> Result<()> {
         Action::Run(run) => run_once(&root, language(&cfg, &run.target.lang)?, &run)?,
         Action::Edit {
             target,
+            editor,
             user_config,
+            standalone,
             ..
         } => edit(
             &root,
             language(&cfg, &target.lang)?,
             &target.day,
+            editor.as_deref(),
             user_config,
+            standalone,
         )?,
         Action::Test { target, part } => {
             let lang = language(&cfg, &target.lang)?;
@@ -827,6 +977,7 @@ fn execute(cli: Cli) -> Result<()> {
                 test: Some(test),
                 build,
                 template: Some(template),
+                editor_setup: None,
             });
             let contents = toml::to_string_pretty(&cfg)?;
             write_new(&path, stub.as_bytes())?;
