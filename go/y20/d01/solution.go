@@ -1,25 +1,29 @@
 package d01
 
 import (
-	"strconv"
-	"strings"
+	"github.com/alecthomas/participle/v2"
+	"github.com/yurianthedev/advent/internal/runner"
 )
 
-func parse(input string) []int {
-	lines := strings.Fields(input)
-	numbers := make([]int, len(lines))
-	for i, line := range lines {
-		value, err := strconv.Atoi(line)
-		if err != nil {
-			panic(err)
-		}
-		numbers[i] = value
-	}
-	return numbers
+type Expense struct {
+	Value int `parser:"@Int"`
 }
 
-func Part1(input string) int {
-	data := parse(input)
+var parser = participle.MustBuild[Expense]()
+
+func Process(input *runner.Input) ([]int, error) {
+	records, err := runner.Collect(runner.ParseLines(input.Lines(), parser))
+	if err != nil {
+		return nil, err
+	}
+	numbers := make([]int, len(records))
+	for i, record := range records {
+		numbers[i] = record.Value
+	}
+	return numbers, nil
+}
+
+func Part1(data []int) (int, error) {
 	var result int
 	for i := range data {
 		for j := 1; j < len(data); j++ {
@@ -28,11 +32,10 @@ func Part1(input string) int {
 			}
 		}
 	}
-	return result
+	return result, nil
 }
 
-func Part2(input string) int {
-	data := parse(input)
+func Part2(data []int) (int, error) {
 	var result int
 	for i := range data {
 		for j := 1; j < len(data); j++ {
@@ -43,5 +46,11 @@ func Part2(input string) int {
 			}
 		}
 	}
-	return result
+	return result, nil
 }
+
+var Examples = []runner.Example[int, int]{{
+	Input: "1721\n979\n366\n299\n675\n1456\n",
+	Part1: runner.Expect(514579), Part2: runner.Expect(241861950),
+}}
+var Solution = runner.New(Process, Part1, Part2, Examples...)

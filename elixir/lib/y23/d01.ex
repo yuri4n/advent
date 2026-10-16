@@ -1,18 +1,31 @@
 defmodule Advent.Y23.D01 do
   use Advent.Day, year: 2023, day: 1
 
-  sample "1abc2\npqr3stu8vwx\na1b2c3d4e5f\ntreb7uchet\n", part1: 142
+  example("1abc2\npqr3stu8vwx\na1b2c3d4e5f\ntreb7uchet\n", part1: 142)
 
-  sample """
-         two1nine
-         eightwothree
-         abcone2threexyz
-         xtwone3four
-         4nineeightseven2
-         zoneight234
-         7pqrstsixteen
-         """,
-         part2: 281
+  example(
+    """
+    two1nine
+    eightwothree
+    abcone2threexyz
+    xtwone3four
+    4nineeightseven2
+    zoneight234
+    7pqrstsixteen
+    """,
+    part2: 281
+  )
+
+  import NimbleParsec
+  defparsec(:calibration, ascii_string([?a..?z, ?0..?9], min: 1) |> eos())
+
+  def process(input) do
+    input
+    |> Advent.Input.lines()
+    |> Stream.reject(&(&1 == ""))
+    |> Advent.Parse.lines(&calibration/1)
+    |> Stream.map(&hd/1)
+  end
 
   @spec is_digit(char) :: boolean
   defp is_digit(char), do: char in ?0..?9
@@ -23,10 +36,9 @@ defmodule Advent.Y23.D01 do
     [List.first(num_chars), List.last(num_chars)] |> to_string() |> Integer.parse() |> elem(0)
   end
 
-  @spec part1(String.t()) :: number()
+  @spec part1(Enumerable.t()) :: number()
   def part1(input) do
     input
-    |> String.split("\n", trim: true)
     |> Stream.map(&fetch_numbers/1)
     |> Stream.map(&build_number/1)
     |> Enum.reduce(&+/2)
@@ -73,10 +85,9 @@ defmodule Advent.Y23.D01 do
     |> Enum.map(fn {_, x} -> x end)
   end
 
-  @spec part2(String.t()) :: number()
+  @spec part2(Enumerable.t()) :: number()
   def part2(input) do
     input
-    |> String.split("\n", trim: true)
     |> Stream.map(&build_and_fetch_nums/1)
     |> Stream.map(fn list -> {List.first(list), List.last(list)} end)
     |> Stream.map(fn {f, l} -> f <> l end)

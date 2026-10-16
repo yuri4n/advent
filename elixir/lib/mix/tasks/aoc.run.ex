@@ -22,20 +22,17 @@ defmodule Mix.Tasks.Aoc.Run do
     compile_options = if Keyword.get(options, :compile, true), do: [], else: ["--no-compile"]
     Mix.Task.run("app.start", compile_options)
 
-    input =
-      if options[:stdin] do
-        case IO.read(:stdio, :eof) do
-          input when is_binary(input) -> input
-          :eof -> ""
-          {:error, reason} -> Mix.raise("cannot read standard input: #{inspect(reason)}")
-        end
-      else
-        File.read!(options[:input] || Advent.Command.input_path(year, day))
+    run = fn input ->
+      for part <- parts do
+        result = Advent.Runner.solve(year, day, part, input)
+        if length(parts) == 1, do: IO.puts(result), else: IO.puts("Part #{part}: #{result}")
       end
+    end
 
-    for part <- parts do
-      result = Advent.Runner.solve(year, day, part, input)
-      if length(parts) == 1, do: IO.puts(result), else: IO.puts("Part #{part}: #{result}")
+    if options[:stdin] do
+      Advent.Input.with_stdin(length(parts) > 1, run)
+    else
+      run.(Advent.Input.file(options[:input] || Advent.Command.input_path(year, day)))
     end
   rescue
     error -> Mix.raise(Exception.message(error))

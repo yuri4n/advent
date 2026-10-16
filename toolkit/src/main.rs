@@ -1,6 +1,8 @@
+mod source;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use source::Source;
 use std::{
     collections::BTreeMap,
     env, fs,
@@ -72,9 +74,19 @@ struct Run {
     #[arg(long, value_enum, default_value = "both")]
     part: Part,
     /// Override the central input file; relative paths are relative to the shell.
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["stdin", "clipboard"])]
     input: Option<PathBuf>,
-    /// Print process wall time, excluding the initial build, to stderr.
+    /// Read standard input (also --input -); replay from a temporary file when needed.
+    #[arg(long)]
+    stdin: bool,
+    /// Read the system clipboard once; never changes its contents.
+    #[arg(long, conflicts_with = "stdin")]
+    clipboard: bool,
+    /// Run an inline example (first by default); select another with --example=N.
+    #[arg(long, num_args = 0..=1, require_equals = true, default_missing_value = "1",
+        value_parser = clap::value_parser!(u32).range(1..), conflicts_with_all = ["input", "stdin", "clipboard"])]
+    example: Option<u32>,
+    /// Print wall time (startup + processing + solving), excluding the build; use bench for split timings.
     #[arg(long)]
     time: bool,
 }
@@ -99,16 +111,16 @@ enum Action {
         #[arg(long)]
         no_nix: bool,
     },
-    /// Build and run selected puzzle parts against a local input file.
+    /// Build and run parts using a file, stdin, clipboard, or inline example.
     Run(Run),
-    /// Run inline sample assertions for a day.
+    /// Check inline example expectations for a day.
     Test {
         #[command(flatten)]
         target: Target,
         #[arg(long, value_enum, default_value = "both")]
         part: Part,
     },
-    /// Repeated process wall-time measurements after one build (not a microbenchmark).
+    /// Measure native time with/without processing, or process wall time with --wall.
     Bench {
         #[command(flatten)]
         run: Run,
@@ -116,6 +128,9 @@ enum Action {
         iterations: u32,
         #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(0..=1000))]
         warmup: u32,
+        /// Measure separate process launches instead of native with/without-processing timings.
+        #[arg(long)]
+        wall: bool,
     },
     /// Run again after source/input changes; stop with Ctrl-C.
     Watch(Run),
@@ -184,6 +199,10 @@ struct Language {
     template: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     editor_setup: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    native_bench: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    example_expectations: bool,
 }
 fn parse_year(value: &str) -> std::result::Result<u16, String> {
     let mut year = value.parse::<u16>().map_err(|_| "year must be a number")?;
@@ -576,7 +595,7 @@ fn adapter_command(
         if mode != "doctor" && mode != "build" {
             command.arg(day.day.to_string());
         }
-        if mode == "run" || mode == "test" {
+        if matches!(mode, "run" | "test" | "example" | "expect" | "bench") {
             command.arg(part);
         }
     } else {
@@ -626,21 +645,16 @@ fn invoke(
     lang: &Language,
     day: &Day,
     part: u8,
-    input: &[u8],
+    input: &Source,
 ) -> Result<(String, Duration)> {
     let mut command = adapter_command(root, lang, "run", day, &part.to_string())?;
     command
-        .stdin(Stdio::piped())
+        .stdin(input.open()?)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
     let started = Instant::now();
-    let mut child = command.spawn()?;
-    let mut pipe = child.stdin.take().ok_or("child stdin missing")?;
-    let bytes = input.to_vec();
-    let writer = thread::spawn(move || pipe.write_all(&bytes));
-    let output = child.wait_with_output()?;
+    let output = command.spawn()?.wait_with_output()?;
     let elapsed = started.elapsed();
-    let written = writer.join().map_err(|_| "input writer panicked")?;
     if !output.status.success() {
         return Err(format!(
             "{} {} day {} part {part} failed ({})",
@@ -648,35 +662,75 @@ fn invoke(
         )
         .into());
     }
-    if let Err(error) = written {
-        if error.kind() != io::ErrorKind::BrokenPipe {
-            return Err(error.into());
-        }
-    }
     let answer = String::from_utf8(output.stdout)?.trim_end().to_owned();
     if answer.is_empty() {
         return Err("runner returned an empty answer".into());
     }
     Ok((answer, elapsed))
 }
-fn input(root: &Path, run: &Run) -> Result<Vec<u8>> {
-    let path = run
-        .input
-        .clone()
-        .unwrap_or_else(|| data_dir(root, &run.target.day).join("input.txt"));
-    fs::read(&path).map_err(|error| {
-        format!(
-            "cannot read {}: {error}; use aoc fetch or --input PATH",
-            path.display()
-        )
-        .into()
-    })
+fn input(root: &Path, lang: &Language, run: &Run, replay: bool) -> Result<Source> {
+    if let Some(index) = run.example {
+        return Source::capture(
+            adapter_command(root, lang, "example", &run.target.day, &index.to_string())?,
+            "example input",
+        );
+    }
+    if run.clipboard {
+        return Source::clipboard();
+    }
+    if run.stdin || run.input.as_deref() == Some(Path::new("-")) {
+        return Source::stdin(replay);
+    }
+    Source::path(
+        run.input
+            .clone()
+            .unwrap_or_else(|| data_dir(root, &run.target.day).join("input.txt")),
+    )
 }
-fn run_once(root: &Path, lang: &Language, run: &Run) -> Result<()> {
-    let input = input(root, run)?;
+fn check_example(root: &Path, lang: &Language, run: &Run, part: u8, answer: &str) -> Result<()> {
+    let Some(index) = run.example else {
+        return Ok(());
+    };
+    if !lang.example_expectations {
+        eprintln!("Example {index} part {part}: UNCHECKED (adapter has no expectation support)");
+        return Ok(());
+    }
+    let output = adapter_command(root, lang, "expect", &run.target.day, &part.to_string())?
+        .arg(index.to_string())
+        .stderr(Stdio::inherit())
+        .output()?;
+    if !output.status.success() {
+        return Err("could not read example expectation".into());
+    }
+    let expected = String::from_utf8(output.stdout)?;
+    if expected.trim_end() == "AOC_NO_EXPECT_V1" {
+        eprintln!("Example {index} part {part}: UNCHECKED (no expected answer)");
+    } else if let Some(value) = expected.strip_prefix("AOC_EXPECT_V1\n") {
+        let value = value.trim_end();
+        if value != answer {
+            return Err(format!(
+                "Example {index} part {part}: FAIL — expected {value:?}, got {answer:?}"
+            )
+            .into());
+        }
+        eprintln!("Example {index} part {part}: PASS");
+    } else {
+        return Err("invalid example expectation protocol".into());
+    }
+    Ok(())
+}
+
+fn run_once(root: &Path, lang: &Language, run: &Run, cached: Option<&Source>) -> Result<()> {
     build(root, lang, &run.target.day)?;
+    let owned = if cached.is_none() {
+        Some(input(root, lang, run, run.part.numbers().len() > 1)?)
+    } else {
+        None
+    };
+    let input = cached.or(owned.as_ref()).ok_or("input source missing")?;
     for &part in run.part.numbers() {
-        let (answer, elapsed) = invoke(root, lang, &run.target.day, part, &input)?;
+        let (answer, elapsed) = invoke(root, lang, &run.target.day, part, input)?;
+        check_example(root, lang, run, part, &answer)?;
         if matches!(run.part, Part::Both) {
             println!("Part {part}: {answer}");
         } else {
@@ -684,13 +738,80 @@ fn run_once(root: &Path, lang: &Language, run: &Run) -> Result<()> {
         }
         if run.time {
             eprintln!(
-                "part {part}: {:.3} ms (process wall time; build excluded)",
+                "part {part}: {:.3} ms (process wall time: runtime startup + processing + solving; build excluded)",
                 elapsed.as_secs_f64() * 1000.0
             );
         }
     }
     Ok(())
 }
+fn native_bench(
+    root: &Path,
+    lang: &Language,
+    run: &Run,
+    input: &Source,
+    iterations: u32,
+    warmup: u32,
+) -> Result<()> {
+    for &part in run.part.numbers() {
+        let output = adapter_command(root, lang, "bench", &run.target.day, &part.to_string())?
+            .args([iterations.to_string(), warmup.to_string()])
+            .stdin(input.open()?)
+            .stderr(Stdio::inherit())
+            .output()?;
+        if !output.status.success() {
+            return Err(format!("native benchmark failed ({})", output.status).into());
+        }
+        let text = String::from_utf8(output.stdout)?;
+        let mut lines = text.splitn(iterations as usize + 3, '\n');
+        if lines.next() != Some("AOC_BENCH_V1") {
+            return Err("invalid native benchmark protocol".into());
+        }
+        let setup = lines
+            .next()
+            .ok_or("benchmark setup timing missing")?
+            .parse::<u64>()?;
+        let mut total = Vec::new();
+        let mut solve = Vec::new();
+        for _ in 0..iterations {
+            let pair = lines
+                .next()
+                .ok_or("benchmark timings missing")?
+                .split_whitespace()
+                .map(str::parse::<u64>)
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            if pair.len() != 2 {
+                return Err("expected total and solve-only timings".into());
+            }
+            total.push(pair[0] as f64 / 1e6);
+            solve.push(pair[1] as f64 / 1e6);
+        }
+        let answer = lines.next().ok_or("benchmark answer missing")?.trim_end();
+        if answer.is_empty() {
+            return Err("benchmark answer is empty".into());
+        }
+        check_example(root, lang, run, part, answer)?;
+        println!("Part {part}: {answer}\n{iterations} runs, {warmup} warmups per mode; native timings, runtime startup excluded.");
+        for (label, mut times) in [("With processing", total), ("Without processing", solve)] {
+            times.sort_by(f64::total_cmp);
+            let mid = times.len() / 2;
+            let median = if times.len() % 2 == 0 {
+                (times[mid - 1] + times[mid]) / 2.0
+            } else {
+                times[mid]
+            };
+            println!(
+                "{label}: ms min={:.3} median={median:.3} mean={:.3} max={:.3}",
+                times[0],
+                times.iter().sum::<f64>() / times.len() as f64,
+                times[times.len() - 1]
+            );
+        }
+        println!("Solve-only setup: {:.3} ms (processing + buffered snapshot; excluded from solve-only timings). Immutable values reused; streams replayed and mutable values copied; normal runs remain streaming.", setup as f64 / 1e6);
+    }
+    Ok(())
+}
+
 fn valid_identifier(value: &str) -> bool {
     !value.is_empty()
         && value
@@ -754,7 +875,7 @@ fn execute(cli: Cli) -> Result<()> {
             }
             fs::create_dir_all(data_dir(&root, &target.day))?;
         }
-        Action::Run(run) => run_once(&root, language(&cfg, &run.target.lang)?, &run)?,
+        Action::Run(run) => run_once(&root, language(&cfg, &run.target.lang)?, &run, None)?,
         Action::Edit {
             target,
             editor,
@@ -776,7 +897,7 @@ fn execute(cli: Cli) -> Result<()> {
             }
             status(
                 adapter_command(&root, lang, "test", &target.day, part.label())?,
-                "samples",
+                "examples",
                 true,
             )?;
         }
@@ -784,10 +905,15 @@ fn execute(cli: Cli) -> Result<()> {
             run,
             iterations,
             warmup,
+            wall,
         } => {
             let lang = language(&cfg, &run.target.lang)?;
-            let input = input(&root, &run)?;
             build(&root, lang, &run.target.day)?;
+            let input = input(&root, lang, &run, true)?;
+            if lang.native_bench && !wall {
+                native_bench(&root, lang, &run, &input, iterations, warmup)?;
+                return Ok(());
+            }
             for &part in run.part.numbers() {
                 let mut expected = None;
                 let mut times = Vec::new();
@@ -812,12 +938,19 @@ fn execute(cli: Cli) -> Result<()> {
                 } else {
                     times[mid]
                 };
+                check_example(&root, lang, &run, part, expected.as_deref().unwrap())?;
                 println!("Part {part}: {}\n{iterations} runs, {warmup} warmups; ms min={:.3} median={median:.3} mean={mean:.3} max={:.3}\nProcess wall time includes runtime startup; build excluded.", expected.unwrap(), times[0], times[times.len()-1]);
             }
         }
         Action::Watch(run) => {
             let lang = language(&cfg, &run.target.lang)?;
-            if let Err(error) = run_once(&root, lang, &run) {
+            let cached =
+                if run.stdin || run.clipboard || run.input.as_deref() == Some(Path::new("-")) {
+                    Some(input(&root, lang, &run, true)?)
+                } else {
+                    None
+                };
+            if let Err(error) = run_once(&root, lang, &run, cached.as_ref()) {
                 eprintln!("aoc watch: {error}");
             }
             // The initial build may create files; take its settled state as the baseline.
@@ -828,7 +961,7 @@ fn execute(cli: Cli) -> Result<()> {
                 let now = watch_snapshot(&root, run.input.as_deref())?;
                 if now != previous {
                     thread::sleep(Duration::from_millis(150));
-                    if let Err(error) = run_once(&root, lang, &run) {
+                    if let Err(error) = run_once(&root, lang, &run, cached.as_ref()) {
                         eprintln!("aoc watch: {error}");
                     }
                     previous = watch_snapshot(&root, run.input.as_deref())?;
@@ -978,6 +1111,8 @@ fn execute(cli: Cli) -> Result<()> {
                 build,
                 template: Some(template),
                 editor_setup: None,
+                native_bench: false,
+                example_expectations: false,
             });
             let contents = toml::to_string_pretty(&cfg)?;
             write_new(&path, stub.as_bytes())?;

@@ -3,14 +3,14 @@ package aoc
 import java.util.concurrent.atomic.AtomicInteger
 import kyo.*
 
-class RunnerTest extends munit.FunSuite {
+class RunnerTest extends PuzzleTest {
   private def run[A](value: => A < Puzzle.Effects): Result[Throwable, A] = {
     import AllowUnsafe.embrace.danger
     KyoApp.Unsafe.runAndBlock(5.seconds)(Abort.catching[Throwable](value))
   }
 
   test(
-    "pure bodies need no IO wrapper and the runner defers their invocation"
+    "pure bodies need no Sync wrapper and the runner defers their invocation"
   ) {
     def nextNumber(input: String): Int = input.toInt + 1
     assertEquals(nextNumber("41"), 42)
@@ -40,14 +40,14 @@ class RunnerTest extends munit.FunSuite {
     var requested = 0
     var executed  = 0
     val day       = new StreamingDay[Int, String] {
-      def part1(input: Input): Int < IO    = {
+      def part1(input: Input): Int < Sync    = {
         requested += 1
         input.text.map { text =>
           executed += 1
           text.toInt + 1
         }
       }
-      def part2(input: Input): String < IO =
+      def part2(input: Input): String < Sync =
         input.text.map(text => s"answer: $text")
     }
     val answer    = Runner.answer(day, "1", "41")
@@ -66,15 +66,15 @@ class RunnerTest extends munit.FunSuite {
     val active  = new AtomicInteger(0)
     val maximum = new AtomicInteger(0)
     val day     = new Day[Long, Long] {
-      def part1(input: String): Long < Async =
-        Barrier.init(2).flatMap { barrier =>
+      def part1(input: String): Long < Puzzle.Effects =
+        Gate.init(2).flatMap { barrier =>
           Async
             .foreach(
               input.linesIterator.map(_.toLong).toVector,
               concurrency = 2
             ) { number =>
               for {
-                _     <- IO {
+                _     <- Sync.defer {
                            val count = active.incrementAndGet()
                            assert(count <= 2)
                            maximum.accumulateAndGet(
@@ -83,8 +83,8 @@ class RunnerTest extends munit.FunSuite {
                            )
                          }
                 // The first worker cannot finish until a second worker overlaps.
-                _     <- barrier.await
-                value <- IO {
+                _     <- barrier.pass
+                value <- Sync.defer {
                            val remaining = active.decrementAndGet()
                            assert(remaining >= 0)
                            number
@@ -93,7 +93,7 @@ class RunnerTest extends munit.FunSuite {
             }
             .map(_.sum)
         }
-      def part2(input: String): Long < Any   = 0L
+      def part2(input: String): Long < Any            = 0L
     }
     assertEquals(
       run(Runner.answer(day, "1", "2147483648\n1\n2\n3")).getOrThrow,
@@ -166,7 +166,7 @@ class RunnerTest extends munit.FunSuite {
     val error    = intercept[IllegalArgumentException](
       run(Runner.checkSamples(day, "1")).getOrThrow
     )
-    assert(error.getMessage.contains("Sample 1 part 1: expected 3, got 2"))
+    assert(error.getMessage.contains("Example 1 part 1: expected 3, got 2"))
     assertEquals(executed, 1)
   }
 
@@ -182,7 +182,9 @@ class RunnerTest extends munit.FunSuite {
         run(Runner.checkSamples(day, selection)).getOrThrow
       )
       assert(
-        error.getMessage.contains("No inline sample expectations for part(s) 2")
+        error.getMessage.contains(
+          "No inline example expectations for part(s) 2"
+        )
       )
     }
   }
@@ -190,9 +192,11 @@ class RunnerTest extends munit.FunSuite {
   test("ordinary-day resource finalizers run after success and failure") {
     var released = 0
     val day      = new Day[Int, Int] {
-      def part1(input: String): Int < (Resource & IO) =
-        Resource.ensure(IO { released += 1 }).andThen(IO(input.toInt))
-      def part2(input: String): Int < Any             = 0
+      def part1(input: String): Int < (Scope & Sync) =
+        Scope
+          .ensure(Sync.defer { released += 1 })
+          .andThen(Sync.defer(input.toInt))
+      def part2(input: String): Int < Any            = 0
     }
     assertEquals(run(Runner.answer(day, "1", "42")).getOrThrow, "42")
     assertEquals(released, 1)
@@ -207,11 +211,11 @@ class RunnerTest extends munit.FunSuite {
     "streaming samples get fresh input for every part, sample, and execution"
   ) {
     val day    = new StreamingDay[Int, Int] {
-      def part1(input: Input): Int < IO =
+      def part1(input: Input): Int < Sync =
         input.lines.fold(0)((count, _) => count + 1)
-      def part2(input: Input): Int < IO =
+      def part2(input: Input): Int < Sync =
         input.bytes.fold(0)((count, _) => count + 1)
-      override val samples              = Seq(
+      override val samples                = Seq(
         Sample("é\n猫\n", Some("2"), Some("7")),
         Sample("🙂", Some("1"), Some("4")),
         Sample("", Some("0"), Some("0"))
@@ -233,7 +237,7 @@ class RunnerTest extends munit.FunSuite {
       override val samples                = Seq(Sample("7", Some("7"), Some("unused")))
     }
     val streaming = new StreamingDay[Int, Int] {
-      def part1(input: Input): Int < IO               = input.text.map(_.toInt)
+      def part1(input: Input): Int < Sync             = input.text.map(_.toInt)
       def part2(input: Input): Int < Abort[Throwable] =
         Abort.fail(IllegalArgumentException("unselected streaming part"))
       override val samples                            = Seq(Sample("7", Some("7"), Some("unused")))

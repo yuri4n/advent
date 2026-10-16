@@ -1,26 +1,39 @@
 package aoc.solutions.y2021
 
-import aoc.{Day, Sample}
-import kyo.<
+import aoc.{ExampleBoth, Input, Puzzle, Solution}
+import kyo.*
 
-object Day02 extends Day[Int, Int] {
+object Day02 extends Solution {
+  type Prepared        = Vector[InstructionLine]
+  type Answer1         = Int
   type InstructionLine = (Instruction, Int)
 
-  def part1(input: String): Int < Any = {
-    val pos = findPos(parse(input))
+  override val part1 = solve { (input: Prepared) =>
+    val pos = findPos(input)
     pos._1 * pos._2
   }
 
-  def part2(input: String): Int < Any = {
-    val pos = findPosWithAim(parse(input))
+  override val part2 = solve { (input: Prepared) =>
+    val pos = findPosWithAim(input)
     pos._1 * pos._2
   }
 
-  def parse(input: String): Seq[InstructionLine] =
-    input.linesIterator.map { s =>
-      val ss = s.split(' ')
-      (Instruction.valueOf(ss(0).capitalize), ss(1).toInt)
-    }.toVector
+  def process(
+      input: Input
+  ): Vector[InstructionLine] < Puzzle.Effects =
+    input.lines
+      .map { line =>
+        Parse.runOrAbort(line) {
+          Parse.entireInput {
+            Parse
+              .inOrder(Parse.identifier, Parse.spaced(Parse.int))
+              .map { case (instruction, value) =>
+                (Instruction.valueOf(instruction.capitalize), value)
+              }
+          }
+        }
+      }
+      .fold(Vector.empty[InstructionLine])(_ :+ _)
 
   def findPos(list: Seq[InstructionLine]): (Int, Int) =
     list.foldRight((0, 0)) {
@@ -43,11 +56,11 @@ object Day02 extends Day[Int, Int] {
     case Forward, Down, Up
   }
 
-  override val samples = Seq(
-    Sample(
+  override val examples = Seq(
+    ExampleBoth(
       "forward 5\ndown 5\nforward 8\nup 3\ndown 8\nforward 2\n",
-      Some("150"),
-      Some("900")
+      150,
+      900
     )
   )
 }

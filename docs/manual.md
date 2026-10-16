@@ -1,384 +1,205 @@
 # Developer manual
 
-Language guides: [Rust](#rust) · [Go](#go) · [Elixir](#elixir) · [Scala with Kyo](#scala) · [Haskell](#haskell). See [Editors and IDEs](editors.md) for language servers, formatting, and run/debug setup.
+[Solution APIs and parser libraries](solutions.md) · [Editors and IDEs](editors.md) · [Architecture](architecture.md)
 
 ## Set up the tools
 
-Nix provides a small base environment and separate environments for each language. Every environment includes the compiled `aoc` command, common shell utilities, and Neovim on `PATH`. With direnv, entering the checkout loads its base environment after your local approval; entering a language directory selects that language's toolchain and language server. `aoc` finds the repository from any of its subdirectories; native build commands still run from their language's project directory.
+Install [Nix](https://nixos.org/download/) and [direnv](https://direnv.net/docs/installation.html). Nix needs `nix-command flakes` enabled. If necessary, add `extra-experimental-features = nix-command flakes` to `~/.config/nix/nix.conf`.
 
-Install [Nix](https://nixos.org/download/) and [direnv](https://direnv.net/docs/installation.html). Nix needs the `nix-command` and `flakes` features enabled. If your installation does not enable them already, add `extra-experimental-features = nix-command flakes` to your user Nix configuration at `~/.config/nix/nix.conf`.
+Enable your shell's direnv hook in its configuration:
 
-Enable direnv for the shell you use by adding the corresponding line to its configuration, then open a new shell:
-
-| Shell | Configuration file | Hook |
+| Shell | File | Hook |
 | --- | --- | --- |
 | Bash | `~/.bashrc` | `eval "$(direnv hook bash)"` |
 | Zsh | `~/.zshrc` | `eval "$(direnv hook zsh)"` |
 | Fish | `~/.config/fish/config.fish` | `direnv hook fish \| source` |
 
-These are local shell settings; repository setup does not edit them automatically. Review the checkout's [.envrc](../.envrc), then explicitly approve it from the repository root:
+Review the repository's `.envrc`, then run `direnv allow`. At the next prompt the base environment supplies the compiled `aoc` command, common utilities, and Neovim. Language-targeted commands select their Nix toolchain automatically. Entering a language directory also selects its environment after approving that directory's `.envrc`.
 
 ```sh
-direnv allow
-```
-
-At the next prompt, direnv evaluates the flake and loads the environment. The first load downloads or builds its pinned dependencies and the CLI; subsequent loads reuse Nix's store. Each language directory has its own `.envrc`, which also needs an explicit `direnv allow` on first entry. Repeat approval when direnv reports that an `.envrc` has changed. Optional [nix-direnv](https://github.com/nix-community/nix-direnv) can cache development environments to speed up loading; the configuration also works with current direnv's standard `use flake` support.
-
-```sh
-aoc doctor --lang rust
-aoc list
-cd scala
-direnv allow
 aoc doctor --lang scala
-cd ..
+aoc list
 ```
 
-In a Nix environment, language commands (`new`, `run`, `test`, `bench`, `watch`, `edit`, and `doctor --lang`) select the corresponding language shell automatically. `aoc doctor` without `--lang` selects all toolchains, so use the language flag when you only need one. Environment preparation happens before benchmark timing.
-
-Without direnv, choose a shell explicitly from the repository root:
+Without direnv, choose a shell explicitly:
 
 ```sh
-nix develop
-nix develop .#scala
-nix develop .#all
+nix develop            # base tools
+nix develop .#scala    # Scala CLI, JDK, Metals
+nix develop .#all      # all five toolchains
 ```
 
-Use one of those commands: they enter the base shell, the Scala shell, or the combined shell respectively. For a single command without an interactive shell, use `nix develop .#rust --command aoc doctor --lang rust`.
+The other named shells are `rust`, `go`, `elixir`, and `haskell`. Rust includes rust-analyzer; Go includes gopls; Elixir includes ElixirLS; Haskell includes Cabal, HLS, and the project's parser packages. Nix pins tool versions, but native package managers still need their dependency caches populated.
 
-| Shell | Additional tools beyond the base environment |
-| --- | --- |
-| `rust` | Pinned Rust toolchain, rust-analyzer, source, formatter, and Clippy. |
-| `go` | Go and gopls. |
-| `elixir` | Erlang/OTP, Elixir/Mix, and ElixirLS. |
-| `scala` | Scala CLI, JDK, and Metals. |
-| `haskell` | GHC with project packages, Cabal, and Haskell Language Server. |
-| `all` | All five language environments together. |
-
-The base utilities include Git, curl, Python 3, jq, ripgrep, fd, and fzf. If you edit the toolkit itself, `direnv reload` rebuilds the CLI when needed; solution changes remain handled by their native build tools.
-
-The flake also exposes the standalone CLI as an app:
-
-```sh
-nix run . -- list
-```
-
-`nix run` supplies the CLI and its basic runtime helpers. Use a development shell for native compiler commands. The pins and package definitions live in [flake.nix](../flake.nix) and [flake.lock](../flake.lock).
+If you edit the toolkit, `direnv reload` rebuilds the packaged CLI. **New source files must be visible to the Git-backed flake**: add them to Git before rebuilding the Nix package (intent-to-add is sufficient when you do not want to stage contents). `./aoc` remains the Cargo-based launcher for using the working tree directly.
 
 ### Existing manual toolchains
 
-The root `./aoc` launcher remains a fallback for machines with Bash and Cargo already installed. It builds the Rust CLI on demand; invoke it from the repository root, using `./aoc` in place of `aoc` in the examples below. Rust is required for that launcher even when your solutions use another language. Install only the additional languages you plan to use; a doctor failure for an unused language does not prevent using another installed language.
+From the root, use `./aoc` instead of `aoc`. That launcher requires Bash and Cargo even when the selected solution is in another language. Install only the native tools you need:
 
-| Project | Required tools | Native metadata |
-| --- | --- | --- |
-| Toolkit | Rust/Cargo | `toolkit/Cargo.toml`, `toolkit/Cargo.lock` |
-| Rust | Rust/Cargo | `rust/Cargo.toml`, per-year manifests |
-| Go | Go | `go/go.mod` |
-| Elixir | Elixir and Erlang/OTP, Mix | `elixir/mix.exs` |
-| Scala | Scala CLI, JDK 17+ | `scala/project.scala` |
-| Haskell | GHC, Cabal; Python 3 for scaffolding | `haskell/advent.cabal`, `haskell/cabal.project` |
-| Downloads | curl and network access | `AOC_SESSION` for authenticated requests |
+| Project | Tools / metadata |
+| --- | --- |
+| Toolkit/Rust | Cargo; `rust-toolchain.toml`, Cargo manifests and locks |
+| Go | Go 1.19+; `go/go.mod`, `go/go.sum` |
+| Elixir | Elixir ~>1.14 and compatible OTP; `elixir/mix.exs`, `mix.lock` |
+| Scala | Scala CLI, JDK 25+ (required by Kyo RC7); `scala/project.scala` |
+| Haskell | GHC, Cabal; `haskell/advent.cabal`, `cabal.project` |
 
-For manual installations, use the versions declared by each native project and add rust-analyzer, gopls, ElixirLS, Metals, or Haskell Language Server for [editor support](editors.md).
+Install dependencies with the relevant native build once while connected. The parser libraries and solution contracts are described in [Writing a solution](solutions.md).
 
 ## The daily loop
 
 ```sh
-aoc new 2026 1 --lang rust
-aoc edit 2026 1 --lang rust
+aoc new 2026 1 --lang scala
+aoc edit 2026 1 --lang scala
+# Implement a part and add a typed inline example.
+aoc run 2026 1 --lang scala --part 1 --example
+aoc test 2026 1 --lang scala --part 1
 aoc fetch 2026 1
-aoc puzzle 2026 1
-aoc test 2026 1 --lang rust --part 1
-aoc run 2026 1 --lang rust --part 1 --time
-aoc watch 2026 1 --lang rust --part 1
+aoc run 2026 1 --lang scala --part 1 --time
+aoc watch 2026 1 --lang scala --part 1 --example
 ```
 
-Use the year and day of an already released puzzle when fetching. Creating a future day's stub does not require that the puzzle be published.
-
-`new` writes a solution stub and the registrations required by its build tool. Implement one part, add inline samples from the puzzle, and run its tests. Select `--part 1` while part 2 is unfinished; select `--part both` once both are ready. Templates do not solve puzzles.
-
-The built-in language names are `rust`, `go`, `elixir`, `scala`, and `haskell`. The shared CLI chooses the day, input, and part; your native tools remain usable directly.
+Only fetch released puzzles. Scaffolding future days is fine. Templates contain no puzzle answers and no available parts until you implement/register them. Existing incomplete parts remain unavailable.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `new YEAR DAY --lang LANG` | Create an unfinished solution and native build registration. |
-| `edit YEAR DAY --lang LANG [--editor COMMAND] [--standalone\|--user-config] [--no-nix]` | Open an existing solution in your selected editor and language environment. |
-| `run YEAR DAY --lang LANG --part 1\|2\|both [--input PATH] [--time]` | Run the selected part or both parts. |
-| `test YEAR DAY --lang LANG [--part 1\|2\|both]` | Check the day's inline sample assertions. |
-| `bench YEAR DAY --lang LANG --part 1\|2\|both [--iterations N] [--warmup N] [--input PATH]` | Run warmups followed by repeated timed executions. |
-| `watch YEAR DAY --lang LANG [--part 1\|2\|both] [--input PATH] [--time]` | Run again after source/input changes; stop with Ctrl-C. |
-| `fetch YEAR DAY [--offline] [--force]` | Read the local input cache or fetch your own input. |
-| `puzzle YEAR DAY [--offline] [--refresh]` | Display the cached puzzle statement or download it. |
-| `doctor [--lang LANG]` | Check required toolchain commands and local configuration. |
-| `list` | List registered languages and adapters. |
-| `add-language NAME --extension EXT --run COMMAND --test COMMAND [--build COMMAND] [--stub SOURCE]` | Register another language and its template. |
+| `new YEAR DAY --lang LANG` | Create a native solution and build registration, without overwriting existing work. |
+| `edit YEAR DAY --lang LANG [--editor COMMAND]` | Open an existing solution in its native project. |
+| `run YEAR DAY --lang LANG [--part 1\|2\|both] [SOURCE] [--time]` | Execute the selected parts. |
+| `test YEAR DAY --lang LANG [--part 1\|2\|both]` | Check inline expectations, using the same processing path as a run. |
+| `bench YEAR DAY --lang LANG [--part 1\|2\|both] [SOURCE] [--iterations N] [--warmup N] [--wall]` | Compare native with/without-processing times, or process wall time. |
+| `watch YEAR DAY --lang LANG [--part 1\|2\|both] [SOURCE] [--time]` | Rebuild/rerun after source or input changes. |
+| `fetch YEAR DAY [--offline] [--force]` | Read cached personal input or download it. |
+| `puzzle YEAR DAY [--offline] [--refresh]` | Display cached or downloaded puzzle text. |
+| `doctor [--lang LANG]` | Check native tools; without a language, selects all toolchains. |
+| `list` | Show registered languages and adapters. |
+| `add-language NAME --extension EXT --run COMMAND --test COMMAND [--build COMMAND] [--stub SOURCE]` | Register trusted custom commands and a template. |
 
-Run `aoc --help` for the command syntax supported by the installed checkout.
+Both `2025` and `25` mean 2025. Days are 1–25. CLI part selection defaults to `both`; select an implemented part while the other is unavailable. Explicit CLI execution remains strict. Native IDE entry points instead run whatever is available and skip absent data/parts.
 
-Both `2022` and `22` select year 2022. Days are 1–25; `--part` defaults to `both`. Watch reruns the solution after changes, including central input edits; it does not run sample tests automatically. Run `test` separately when updating a sample.
+### Input sources
 
-`edit` chooses its command in this order: `--editor COMMAND`, nonblank `VISUAL`, nonblank `EDITOR`, then `nvim`. It runs from the native language project and opens the existing solution; Zed receives both the project directory and solution path. Create a missing day with `new` first; editing never creates it implicitly.
+Choose at most one source:
 
-For Zed, select it once or make it your shell's preferred editor:
-
-```sh
-aoc edit 2021 1 --lang scala --editor zed
-export VISUAL='zed --wait'
-aoc edit 2021 1 --lang scala
-```
-
-The optional `--wait` keeps the terminal command waiting for the editor; omit it for a normal GUI handoff. Install Zed and its command-line launcher locally. Editor commands may contain quoted arguments but are executed directly, without shell evaluation.
-
-When the selected editor is Neovim, normal startup loads your personal configuration before adding the AoC project/LSP integration. Neovim's configuration lookup, including `NVIM_APPNAME`, applies; bundled defaults are used when startup has no existing configuration. The Neovim-only flags `--standalone` and `--user-config` select the isolated bundled setup or personal configuration alone, respectively, and are mutually exclusive.
-
-Add `--no-nix` to use tools from the current environment. Otherwise, `edit` enters the selected language shell when Nix and the corresponding shell definition are available. Scala's BSP metadata is prepared before launching Zed or another external editor, including Neovim's personal-only mode. The normal Neovim overlay prepares it asynchronously when needed. See [the editor guide](editors.md) for Zed setup and [Neovim modes and troubleshooting](editors.md#neovim).
-
-## Inputs, samples, and offline use
-
-Real inputs have one shared location, independent of language:
-
-```text
-data/
-  y21/
-    d01/
-      input.txt
-```
-
-The CLI finds the repository through `aoc.toml` and supplies the input to the native adapter. Use an explicit input file when experimenting:
-
-```sh
-aoc run 2022 1 --lang rust --part 2 --input /tmp/my-example.txt
-```
-
-Inputs and downloaded puzzle material are local caches, excluded from Git. Supply `AOC_SESSION` using your shell's secret manager or the cloud environment's secret settings. It is the value of your own Advent of Code session cookie. Do not put it in a command argument, a committed environment file, editor settings, or chat. The toolkit does not submit answers.
-
-`fetch` reuses an existing input. `--force` requests a fresh copy. `puzzle` caches the statement as `data/yYY/dDD/puzzle.html`; `--refresh` downloads it again, useful after unlocking part 2. `--offline` only reads an existing cache and reports a missing file instead of downloading it. Offline mode cannot be combined with force/refresh. Public puzzle text can be fetched without a session; a session lets AoC return any part you have unlocked.
-
-Offline puzzle/input access and offline dependency installation are different. Run each native build once with its dependencies available before relying on an offline session. Cargo, Go, Mix, Scala CLI, and Cabal keep their own compiler and dependency caches.
-
-Nix pins the development tools and CLI, but it does not prefetch personal puzzle data or all native project dependencies. Prepare the Nix development shell while connected, then warm the native builds you will use. Scala CLI still downloads its Scala compiler and Maven dependencies into its own cache on first use. Offline use needs both the relevant Nix store paths and those language caches populated.
-
-For cached Scala builds/tests, set `AOC_OFFLINE=1` when invoking the toolkit. Native Cargo and Cabal commands also support `--offline`. A cache miss still needs a connected preparation step; the toolkit does not fabricate inputs or dependencies.
-
-Samples are inline with native source/tests. Expected answers belong to those assertions; there is no mandatory shared `answers.toml`. A missing expected part can be left unset while working on the other part. An empty generated template is unfinished work, not a passing sample suite.
-
-## Native workflows
-
-These commands are useful for checking project health or configuring an editor. For running a day, prefer `aoc` so input paths and part selection stay consistent.
-
-Run `nix develop .#all --command bash ./scripts/check.sh` from the repository root to check the toolkit, Rust harness, Go, Elixir, Cabal, and all three migrated Scala days together. With all tools already available, run `./scripts/check.sh` directly. This requires the language dependencies but no real puzzle inputs. Use `AOC_OFFLINE=1 ./scripts/check.sh` to keep Scala builds on their populated dependency cache.
-
-| Project directory | Native command |
+| Source | Behavior |
 | --- | --- |
-| `toolkit/` | `cargo test --locked` |
-| `rust/` | `cargo test --workspace --locked` |
-| `go/` | `go test ./...` |
-| `elixir/` | `mix test` |
-| `scala/` | `scala-cli test . --server=false` |
-| `haskell/` | `cabal build all`, then `cabal test` |
-
-Haskell's Cabal manifest is maintained directly; Stack and hpack are no longer part of the workflow. Scala uses Scala CLI directives in `project.scala` and Kyo for effects; sbt is no longer required.
-
-### Rust
-
-A day lives at `rust/years/yYYYY/src/dDD.rs`. It exports `part1(input: &str)`, `part2(input: &str)`, and `SAMPLES`. Each part can return any concrete type implementing `Display`. Use an ordinary typed parsing helper when useful; there is no mandatory parse trait.
-
-```rust
-pub const SAMPLES: &[aoc::Sample] = &[
-    aoc::sample!("example", "sample input", part1 = "expected answer"),
-];
-```
-
-Replace the placeholder input and answer with an actual puzzle sample. Add `part2 = "expected answer"` when that part is implemented. The year crate's `aoc::main! { 1 => d01 }` registers modules and provides native sample tests; `new` updates it automatically. Native `cargo test` checks supplied expectations. `aoc test --part both` additionally requires coverage for both parts.
-
-Use `aoc::input!("../../../data/y21/d07/input.txt")` when you explicitly want to embed an input at compile time. The path is relative to the year crate's Cargo manifest. Ordinary harness builds consume standard input, so cloning the repository and compiling it does not require private inputs. If a part uses embedded input instead of its argument, input overrides and sample tests cannot change that embedded value; keep sample-tested logic parameterized by input.
+| No flag | `data/yYY/dDD/input.txt` |
+| `--input PATH` | File path, relative to the invoking shell |
+| `--stdin` or `--input -` | Standard input |
+| `--clipboard` | Read the clipboard once; never modify it |
+| `--example` | First inline example, without requiring an expected answer |
+| `--example=N` | Numbered inline example, starting at 1 |
 
 ```sh
-cargo run --manifest-path rust/Cargo.toml -p aoc-y2021 -- test 7 2
-cargo run --manifest-path rust/Cargo.toml -p aoc-y2021 -- run 7 2 < data/y21/d07/input.txt
+printf 'L68\nR18\n' | aoc run 2025 1 --lang scala --part 1 --stdin
+aoc run 2025 1 --lang scala --part 1 --clipboard
+aoc run 2025 1 --lang scala --part 1 --example
+aoc run 2023 1 --lang elixir --part 2 --example=2
 ```
 
-### Go
+Example execution prints actual answers to stdout and reports `PASS`, `FAIL`, or `UNCHECKED` on stderr for each selected part. A mismatch includes expected/actual values and exits nonzero. Input-only or part-specific examples without an expectation for the selected part are explicitly unchecked, not passed. `test` checks the declared expectations; an empty fixture list must not count as a successful test suite. Examples can differ between parts. Input is never silently trimmed to make an example pass; normalize a source literal explicitly when needed, such as Scala's `.stripMargin`. Processors receive byte-backed inputs and explicitly choose lazy byte, UTF-8 character, string-line, or nested character-line views; see [input views](solutions.md#input-views).
 
-A day lives at `go/yYY/dDD/solution.go`, in package `dDD`. Implement exported `Part1(input string)` and `Part2(input string)` functions. The registry infers their result types; an ordinary `parse` helper is optional. The generated stub panics until implemented.
+Files are connected directly to the child process's stdin. A single-part stdin run also streams directly. When stdin must be replayed for both parts, benchmarks, or watch, the CLI uses a private temporary file instead of retaining the complete input in RAM. Clipboard/example extraction also uses temporary-file replay. These files are cleaned up by the OS/library; native benchmark preparation is separate and intentionally uses memory.
 
-Put the inline fixture in `sample_test.go`. Keep the sample test named `TestSamples`, with subtests named `part1` and `part2`, so CLI part filtering can find them. Add ordinary Go assertions inside each subtest; see [the migrated day 1 tests](../go/y20/d01/sample_test.go).
+Clipboard reading uses `pbpaste` on macOS, `wl-paste` on Wayland, or `xclip`/`xsel` on X11. If no reader is available, pipe input with `--stdin`. `AOC_CLIPBOARD_COMMAND` can specify a trusted executable and quoted arguments; it is parsed without shell evaluation. Clipboard integration tests use a mock reader and do not inspect your real clipboard.
+
+Watch rebuilds examples after source edits and reopens file inputs, including replaced files. Stdin and clipboard are captured once for that watch session; changing the clipboard is not a watch trigger. Watch does not run assertions automatically.
+
+## Editors and direct execution
+
+`edit` chooses `--editor COMMAND`, then nonblank `VISUAL`, then `EDITOR`, then `nvim`. Arguments are parsed without a shell. Zed/VS Code receive the project and solution paths. Scala BSP metadata is prepared for external editors. Add `--no-nix` to use the current environment instead of selecting a language shell.
 
 ```sh
-cd go
-go test ./y20/d01 -run '^TestSamples$/^part1$'
-go run ./cmd/aoc 2020 1 1 < ../data/y20/d01/input.txt
+aoc edit 2025 1 --lang scala --editor zed
+export VISUAL='zed --wait'
 ```
 
-### Elixir
+Neovim normally loads your own configuration and adds the repository overlay. `--user-config` uses only your personal configuration; `--standalone` uses the bundled complete setup. These flags are Neovim-only and mutually exclusive. See [the editor guide](editors.md) for server setup, keybindings, and troubleshooting.
 
-A day lives at `elixir/lib/yYY/dDD.ex` in a module such as `Advent.Y20.D02`. Use `Advent.Day` to declare the year/day and inline samples, and keep `part1(input)` and `part2(input)` as ordinary pure functions. Parsing helpers are optional. The generated module is unfinished:
+For direct/native execution, available examples and existing input are run without fetching anything. Missing examples, missing input, and unavailable parts are skipped; implemented parts that fail are still errors.
 
-```elixir
-defmodule Advent.Y26.D01 do
-  use Advent.Day, year: 2026, day: 1
+| Language | Native/IDE entry point |
+| --- | --- |
+| Scala | Run the individual `aoc.solutions.yYYYY.DayDD` object (`KyoApp`). |
+| Rust | Run the year binary with `auto DAY`, or no arguments for all its days. |
+| Go | Run `cmd/aoc` with `auto YEAR DAY`, or no arguments for all registered days. |
+| Elixir | `mix run -e 'Advent.Y25.D01.run()'` |
+| Haskell | From `haskell/`, `runghc -isrc src/Year2021/Day06.hs` |
 
-  def part1(_input), do: raise("TODO: implement part 1")
-  def part2(_input), do: raise("TODO: implement part 2")
-end
-```
-
-Add a `sample` declaration inside that module with real puzzle input and expected answers:
-
-```elixir
-sample "sample input", part1: "expected answer"
-```
-
-Expected answers can use the same value types as the part functions, for example an integer. Omit `part2:` until that part is ready, then add its expectation to the same sample or another declaration. Heredocs work for multiline samples; see [the migrated day 2](../elixir/lib/y20/d02.ex). The shared ExUnit suite discovers the declarations, so each day needs only its solution module. `mix test` checks the supplied expectations together with the harness tests, so part 2 can remain unfinished while working on part 1. A day with no expectations fails explicitly. `mix aoc.test --part both` requires expectations for both parts; use `--part 1` while only that part is ready.
-
-The native Mix tasks use the same year/day/part selection as the root CLI. `aoc.run` reads the central `data/yYY/dDD/input.txt` by default; use `--input PATH` to select another file or `--stdin` to pipe input:
-
-```sh
-cd elixir
-mix aoc.new 2026 1
-mix aoc.test 2020 2 --part 1
-mix aoc.run 2020 2 --part 1
-mix aoc.run 2020 2 --part 1 --stdin < ../data/y20/d02/input.txt
-mix test
-```
-
-`mix aoc.new` creates one module containing the unfinished part functions and a commented sample declaration. `aoc new`, `aoc run`, and `aoc test` remain available from the repository root.
-
-### Scala
-
-A day lives at `scala/src/main/scala/aoc/solutions/yYYYY/DayDD.scala`. Its object extends `Day[Part1, Part2]`, receives input text, and returns Kyo computations with typed answers. The scaffold starts with `Long` for both answers; change either type to match your result, for example `Day[Int, String]`.
-
-Scala uses [Kyo 0.19.0](https://github.com/getkyo/kyo/tree/v0.19.0), pinned alongside Scala 3.7.3 in [project.scala](../scala/project.scala). Consult that version's API: it uses `IO` and `Resource`, while newer Kyo examples may use different names. The project enables Kyo's recommended value-discard checks and strict equality.
-
-The generated solution is deliberately unfinished:
-
-```scala
-package aoc.solutions.y2026
-
-import aoc.{Day, Sample}
-import kyo.<
-
-object Day01 extends Day[Long, Long] {
-  def part1(input: String): Long < Any = ???
-  def part2(input: String): Long < Any = ???
-  override val samples: Seq[Sample] = Seq.empty
-}
-```
-
-`???` is a valid Scala placeholder that throws when evaluated. A generated day can therefore compile without editor diagnostics while remaining unfinished; running the selected part exposes the stub.
-
-`Answer < Any` means an effect-free Kyo computation. Write an ordinary expression as the function body: Kyo lifts its value automatically, so pure solutions need no `IO` wrapper. Keep the return annotation `Answer < Any`; a plain `Answer` return annotation cannot override the `Day` contract. Parsing and algorithm helpers remain ordinary functions returning plain values, with no mandatory parse interface. See [the migrated day 1](../scala/src/main/scala/aoc/solutions/y2021/Day01.scala) for a complete example.
-
-The shared Kyo application reads input, evaluates the computation, and prints its answer. Use `input.linesIterator` when line iteration is convenient; the standard `Day` input is already a buffered string. Either part can opt into effects by declaring `Answer < aoc.Puzzle.Effects`, which permits `Async`, `Abort[Throwable]`, and `Resource`, or a narrower effect type. Both ordinary thrown exceptions and typed failures reach the shared error boundary, which reports the failure on stderr and exits unsuccessfully.
-
-Add inline samples to the object:
-
-```scala
-override val samples = Seq(
-  Sample("sample input", expected1 = Some("expected answer"), expected2 = None)
-)
-```
-
-Replace the placeholder input and answer with a real puzzle sample. Expected answers are strings, matching the returned value's `toString`. `None` means no assertion for that part; it does not assert an empty answer. Keep `--part 1` selected until part 2 has an implementation and a sample expectation.
-
-Use the shared CLI from the repository root:
-
-```sh
-aoc new 2026 1 --lang scala
-aoc test 2021 1 --lang scala --part 1
-aoc run 2021 1 --lang scala --part 1 --time
-aoc watch 2021 1 --lang scala --part 1
-```
-
-Native execution accepts standard input. Run the MUnit harness tests separately from a selected day's inline samples:
-
-```sh
-cd scala
-scala-cli test . --server=false
-scala-cli run . --server=false --main-class aoc.Main -- test 2021 1 1
-scala-cli run . --server=false --main-class aoc.Main -- run 2021 1 1 < ../data/y21/d01/input.txt
-```
-
-For completion and diagnostics, import the Scala CLI build in Metals using the [BSP setup instructions](editors.md#project-roots-and-language-servers).
-
-#### Optional parallel work
-
-An ordinary `Day` can use Kyo's bounded parallel traversal when expensive work on separate items is independent. This small API example counts characters across lines; inside a day object:
-
-```scala
-import aoc.Puzzle
-import kyo.{<, Async}
-
-def part1(input: String): Long < Puzzle.Effects =
-  Async.foreach(input.linesIterator.toVector, concurrency = 4)(line =>
-    line.length.toLong
-  ).map(_.sum)
-```
-
-The callback can return a pure value directly; `Async.foreach` handles scheduling. `concurrency = 4` bounds the number in flight. Choose a limit that fits the workload and available CPUs; scheduling overhead can make small calculations such as this count slower. Use parallelism when the independent calculation is expensive enough to benefit. The default scaffold stays effect-free until this is useful.
-
-The runner handles supported effects for both `Day` and `StreamingDay`. Handle any additional effects or different error types before returning, and keep effect runners and unsafe execution out of solution files.
-
-#### Streaming input
-
-Use `StreamingDay[Part1, Part2]` when a part needs an input stream. It has the same effect capabilities as `Day`, with `aoc.Input` as the argument in place of `String`. Parts return `Answer < aoc.Puzzle.Effects` or a narrower type, such as `Answer < IO`.
-
-`Input` provides three ways to consume the source:
-
-| Access | Result | Behavior |
-| --- | --- | --- |
-| `input.text` | `String < IO` | Buffer the complete UTF-8 input. |
-| `input.lines` | `Stream[String, IO]` | Decode UTF-8 and read lines as the stream is consumed. |
-| `input.bytes` | `Stream[Byte, IO]` | Stream raw bytes using 4 KiB reads. |
-
-This small API example counts lines and bytes; it is not a puzzle solution or the generated template:
-
-```scala
-import aoc.{Input, StreamingDay}
-import kyo.{<, IO}
-
-object InputCounts extends StreamingDay[Long, Long] {
-  def part1(input: Input): Long < IO =
-    input.lines.fold(0L)((count, _) => count + 1L)
-
-  def part2(input: Input): Long < IO =
-    input.bytes.fold(0L)((count, _) => count + 1L)
-}
-```
-
-Each `Input` can be consumed once: choose text, lines, or bytes. The runner provides fresh input for each part and sample. Line streaming removes line terminators, including LF, CRLF, and lone CR, preserves interior empty lines, and does not invent an extra empty line after a final terminator. It uses bounded read-ahead, but a very long line still needs memory proportional to that line. The runner leaves borrowed standard input open. Inline `Sample` declarations and the CLI commands work for both `Day` and `StreamingDay`.
-
-### Haskell
-
-A day lives in `haskell/src/YearYYYY/DayDD.hs`. It exports a parser, the two part functions, and `samples`. The parser converts `String` into that day's input type; each part returns a value with a `Show` instance. New-day stubs use `undefined`.
-
-```haskell
-samples = [Sample "sample input" (Just "expected answer") Nothing]
-```
-
-Replace the placeholder values with a real sample. `Nothing` leaves one part unasserted. The scaffold registers the module with Cabal and `AOC.Registry`; HLS can follow these ordinary imports.
-
-```sh
-cd haskell
-cabal run advent-exe -- test 2021 9 1
-cabal run advent-exe -- run 2021 9 1 < ../data/y21/d09/input.txt
-```
+These entry points preserve native project structure rather than turn every module/package into a separate executable.
 
 ## Timing and benchmarks
 
 ```sh
-aoc run 2022 1 --lang rust --part 2 --time
-aoc bench 2022 1 --lang rust --part 2 --warmup 2 --iterations 10
+aoc bench 2025 1 --lang scala --part 1 --example --iterations 10 --warmup 3
+aoc bench 2025 1 --lang scala --part 1 --example --wall
 ```
 
-Use a completed part and the same input when comparing changes. The shared benchmark builds once, runs the warmups, and reports minimum, median, mean, and maximum wall time. Defaults are one warmup and ten measured runs. It also rejects answers that change between runs.
+Built-in adapters report:
 
-These measurements include process/runtime startup and input handling; they do not isolate a function. Initial build time is excluded. JVM/BEAM startup and operating-system caches affect the result. Use a native benchmarking library for detailed allocation analysis or stable microbenchmarks. Avoid comparing languages from these timings alone.
+- **With processing:** shared processing plus the selected part, including lazy parsing actually consumed by that part.
+- **Without processing:** the part operating on already-prepared input.
+- **Solve-only setup:** processing plus materialization/replay preparation, reported separately.
+
+Each timing category reports minimum, median, mean, and maximum. Defaults are ten measured runs and one warmup per mode. Answers must stay identical across iterations and modes. Build time and runtime startup are excluded from native timings. Fixture extraction and raw-input buffering happen before measurement.
+
+Solve-only benchmarking explicitly permits buffering. A parsed stream is consumed into replayable data; it is not sufficient to time construction of a lazy stream. Immutable prepared values may be reused; mutable data needs copies. Replay/copy construction is outside the solve-only timer. The [language guides](solutions.md) document each language's replay support and limitations. Ordinary execution stays streaming.
+
+`--wall` retains the original benchmark: separate process launches, one initial build, and timings including runtime startup and input handling. Custom languages without native benchmark support use this mode automatically. `run --time` likewise reports process wall time: runtime startup + processing + solving, with the build excluded. It does not separate parsing from solving; use `aoc bench` for the two native timing modes.
+
+These are practical iteration timings, not a statistical microbenchmark framework. JVM/BEAM warmup, GC, scheduling, caches, native answer formatting, and very small sample sizes affect results. Use appropriate native benchmark tools for detailed optimization; do not infer language rankings from these numbers.
+
+## Inputs, examples, and offline use
+
+Personal inputs and downloaded statements live in ignored `data/yYY/dDD/` directories. Fetching input requires your own `AOC_SESSION` cookie in a secure environment setting. Never place it in command arguments, source, editor settings, committed files, or chat. The toolkit does not submit answers.
+
+`fetch` reuses cached input unless `--force` is supplied. `puzzle` stores `puzzle.html`; `--refresh` downloads newly unlocked text. `--offline` reads existing cache files only and cannot be combined with force/refresh. Normal runs and IDE entry points never download data automatically.
+
+Offline data access is separate from offline dependency installation. Warm the language toolchain/dependency caches first. Scala supports `AOC_OFFLINE=1`; Cargo and Cabal also have native `--offline` options. Nix does not prefetch personal inputs or every native dependency.
+
+## Native workflows
+
+```sh
+nix develop .#all --command bash ./scripts/check.sh
+```
+
+With toolchains already available, run `./scripts/check.sh`; use `AOC_OFFLINE=1` for Scala's populated cache. The checks require no personal inputs.
+
+| Directory | Checks |
+| --- | --- |
+| `toolkit/` | `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings` |
+| `rust/` | `cargo test --workspace --locked` |
+| `go/` | `go test ./...`, `go vet ./...` |
+| `elixir/` | `mix test`, `mix format --check-formatted` |
+| `scala/` | `scala-cli test . --server=false` |
+| `haskell/` | `cabal test --offline --test-show-details=direct` |
+
+### Rust
+
+See [the Rust solution guide](solutions.md#rust) for winnow, typed examples, associated types, and registration.
+
+### Go
+
+See [the Go solution guide](solutions.md#go) for Participle, stream callbacks, typed fixtures, and native execution.
+
+### Elixir
+
+See [the Elixir solution guide](solutions.md#elixir) for NimbleParsec and `process/1`.
+
+### Scala
+
+See [the Scala solution guide](solutions.md#scala) for inner types, Kyo Parse, typed example cases, optional parts, and IDE execution. Kyo 1.0.0-RC7 and Scala 3.9.0 are pinned; the published RC7 jars require Java 25, provided by the Scala Nix shell. Repeated runs reuse the packaged jar when source contents, resources, adapter, and toolchain fingerprint are unchanged. Source additions/deletions also invalidate the cache. Delete `.aoc/build/scala/advent.jar` to force a fresh build.
+
+### Haskell
+
+See [the Haskell solution guide](solutions.md#haskell) for Megaparsec, lazy input, typed examples, and `NFData` benchmarking.
 
 ## Add a language
 
-The CLI can register a language without changing its Rust source. Specify the extension, a run command, a test command, and a syntactically valid unfinished template. Commands are trusted local code: only register commands you would run yourself.
+Commands are trusted local code. Register only commands you would run yourself:
 
 ```sh
 aoc add-language python --extension py \
@@ -387,40 +208,31 @@ aoc add-language python --extension py \
   --stub 'raise NotImplementedError("implement the puzzle parts")'
 ```
 
-Registration updates `aoc.toml` and writes `templates/python/day.py`. Then `aoc new 2026 1 --lang python` creates `solutions/python/y26/d01.py`. Existing language registrations and source files are not overwritten. Use `--build COMMAND` when compilation is needed before a run.
+This updates `aoc.toml` and creates `templates/python/day.py`; `new` then creates `solutions/python/yYY/dDD.py`. Existing files are not overwritten. `{file}` is already shell-quoted. `{year}`, `{day}`, and `{part}` are also available. Run commands receive stdin. Test commands must reject failed/missing assertions. Registering a language does not invent its native runner or install its dependencies.
 
-Command templates can use `{file}`, `{year}`, `{day}`, and `{part}`. `{file}` is already shell-quoted by the toolkit, so do not wrap that placeholder in extra quotes. Commands run from the repository root. The run command receives the input on standard input; arrange your native runner to select the requested part and print its answer. The test command must reject failed or missing samples and support `1`, `2`, and `both`. The example deliberately creates an unfinished program. You must implement its runner and tests before it can pass.
+For a richer integration, provide an adapter script in `aoc.toml`:
 
-Adding a language provides orchestration and file generation. Install its compiler/interpreter and language server, then add any native dependency manifest or editor project data it requires. The built-in VS Code language picker is a static convenience; add your new language there or use the terminal.
+- `build YEAR`
+- `run YEAR DAY PART`
+- `test YEAR DAY PART`
+- `example YEAR DAY INDEX` — emit raw fixture bytes only
+- `new YEAR DAY`
+- `doctor`
 
-Nix language environments are separate, small modules. To supply a custom language's tools, add a matching `nix/languages/NAME.nix` file; the flake discovers it automatically as a named shell. For example, `nix/languages/python.nix` could contain:
+An adapter may opt into `example_expectations = true` and implement `expect YEAR DAY PART INDEX`. It emits `AOC_EXPECT_V1` followed by a newline and the displayed expected answer, or `AOC_NO_EXPECT_V1` if no expectation exists. Index/part errors must exit nonzero. The CLI checks the selected answer without running the solver twice. Adapters without this capability report examples as `UNCHECKED`.
 
-```nix
-{ pkgs, ... }: {
-  packages = [ pkgs.python3 pkgs.pyright ];
-}
-```
+An adapter may opt into `native_bench = true`. Its `bench YEAR DAY PART ITERATIONS WARMUP` command reads input from stdin and emits `AOC_BENCH_V1`, setup nanoseconds, exactly `ITERATIONS` lines of `total_ns solve_ns`, then the answer (which may contain newlines). All errors/diagnostics go to stderr. Validate answer stability before emitting a successful report.
 
-Modules receive `pkgs` and the pinned `rust` toolchain, and may also return an `environment` attribute set. The shell names `base`, `default`, and `all` are reserved; use the CLI language name for any other module. Add the file to Git so the flake can see it, then use `nix develop .#python`; `direnv reload` refreshes an existing environment.
-
-For the bundled Neovim setup, add an optional matching `editor/nvim/languages/python.lua` module using the [editor module contract](editors.md#add-a-neovim-language). The CLI registration, Nix toolchain module, Neovim server module, and native project metadata serve different purposes and should use the same language name.
-
-A language's `aoc.toml` entry can also provide an `editor_setup` argument array to prepare project metadata before an external editor opens. Scala uses:
-
-```toml
-editor_setup = ["bash", "scripts/languages/scala.sh", "editor-setup"]
-```
-
-The command runs from the repository root with `AOC_ROOT`, `AOC_PROJECT_ROOT`, and `AOC_EDITOR_LANGUAGE` available, and a failure stops editor launch. Arguments are passed literally. This hook runs for external editors and Neovim's `--user-config` mode; the AoC Neovim overlay uses its language module's optional `prepare` callback instead.
+Add a matching `nix/languages/NAME.nix` to supply tools, and an optional `editor/nvim/languages/NAME.lua` for Neovim support. Shell names `base`, `default`, and `all` are reserved. An optional `editor_setup` argument array prepares external-editor project metadata; see [editor integration](editors.md#add-a-neovim-language).
 
 ## Troubleshooting
 
-- `aoc` is missing: check that the direnv hook is enabled and this checkout's `.envrc` is approved, or enter `nix develop`. For manual toolchains, use `./aoc` from the repository root.
-- Another command is missing: run `aoc doctor --lang LANG` in the development shell. With manual toolchains, install the missing tool and restart terminals/editors so they inherit the updated `PATH`.
-- Input is missing: fetch it after configuring `AOC_SESSION`, or pass `--input PATH`. Test samples do not require the real input.
-- A part is unfinished: select the implemented part explicitly. Migration preserves existing incomplete solutions.
-- A sample command fails with no assertions: supply a real inline sample and its expected answer for that part.
-- Rust compile-time input fails: check the path used by the embedding macro and ensure the file exists before compiling.
-- HLS cannot load a component: use an HLS build compatible with the selected GHC and run `cabal build all`.
-- Metals cannot import the build: run `bash scripts/languages/scala.sh editor-setup` from the repository root and reconnect the build server.
-- A download fails: verify the network connection and, for your input, the current session secret. Keep TLS and checksum validation enabled.
+- Missing `aoc`: approve `.envrc`, enable the direnv hook, or enter `nix develop`.
+- New flags are not recognized: the installed CLI is stale; rebuild/reload it, or use the working-tree launcher with Cargo available.
+- A new Rust module is missing during Nix packaging: make new source files visible to Git before evaluating the flake.
+- Missing input: fetch it explicitly or choose `--example`, `--stdin`, `--clipboard`, or `--input`.
+- Unavailable part: select an implemented part. IDE automatic execution skips unavailable parts; explicit CLI runs do not.
+- No assertions: add a typed example expectation. Merely supplying input is not a passing test.
+- Solve-only replay is unsupported: provide the language-specific replay operation or use `--wall`.
+- Missing compiler/server: run `aoc doctor --lang LANG` and check [editor setup](editors.md).
+- Dependency downloads fail: verify network and CA configuration; do not disable TLS/checksum validation.

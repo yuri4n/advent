@@ -1,66 +1,33 @@
-# Elixir puzzles
+# Elixir solutions
 
-Open this directory as a Mix project. Elixir 1.14 or later and a compatible
-Erlang/OTP are required; there are no external package dependencies.
-
-With the [Nix and direnv setup](../docs/manual.md#set-up-the-tools), entering this
-directory selects the Elixir environment after you approve its `.envrc` with
-`direnv allow`. Alternatively, run `nix develop .#elixir` from the repository
-root. `aoc edit 2020 2 --lang elixir` opens the solution with the project tools
-and ElixirLS available.
-
-A day declares its metadata and samples once, then uses ordinary functions:
-
-```elixir
-defmodule Advent.Y20.D02 do
-  use Advent.Day, year: 2020, day: 2
-
-  sample """
-         1-3 a: abcde
-         1-3 b: cdefg
-         2-9 c: ccccccccc
-         """,
-    part1: 2,
-    part2: 1
-
-  def part1(input), do: raise("TODO: implement part 1")
-  def part2(input), do: raise("TODO: implement part 2")
-end
-```
-
-`use Advent.Day` registers metadata at compile time. `sample` records inline input
-and expected answers; the shared ExUnit suite generates the assertions. You can
-add several samples, give a sample only `part1:` or `part2:`, and keep parsing in
-an ordinary private helper. A day needs no runner, file reads, or companion test
-module. Templates contain empty solution stubs only.
-
-From this directory:
+Use the shared toolkit from the repository root, or the native Mix tasks here.
 
 ```sh
-mix aoc.new 2026 1
+mix deps.get
+mix test
 mix aoc.test 2020 2 --part 1
 mix aoc.run 2020 2 --part 1
-mix aoc.run 2020 2 --input /path/to/input.txt
-mix test
-mix format
+mix run -e 'Advent.Y20.D02.run()'
 ```
 
-`aoc.run` reads `../data/yYY/dDD/input.txt` by default. `--input FILE` overrides it;
-`--stdin` reads standard input. `--part` accepts `1`, `2`, or `both` (the default).
-A single selected part prints its answer alone. Years may be `2020` or `20`.
+A solution uses `Advent.Day`, defines a shared `process/1` over byte-backed `Advent.Input`, and implements whichever parts are ready. `process/1` may return a stream or an ordinary immutable value. Input files, stdin, and inline examples all use that same processing path.
 
-`mix test` checks the expectations you have written, allowing work on part 1 while
-part 2 remains a stub. A completely empty day fails with a missing-sample message.
-`mix aoc.test YEAR DAY --part PART` requires expectations for every selected part,
-so selecting `both` fails when only part 1 has samples. Failed answers and missing
-expectations return nonzero status. New days are discovered automatically, and
-`aoc.new` refuses to overwrite an existing module.
+Use **NimbleParsec directly** for grammars. `Advent.Parse.lines/2` is a small lazy bridge that attaches line context and rejects trailing input. It is not a replacement parser API.
 
-The repository `aoc` command uses these same Mix tasks. Its adapter builds
-before running, then uses `mix aoc.run --stdin --no-compile` so answer output stays
-clean and benchmark loops exclude compilation. Elixir runtime startup remains in
-the reported process timings.
+```elixir
+use Advent.Day, year: 2026, day: 1
+import NimbleParsec
 
-See [the shared manual](../docs/manual.md) for input downloads, watch mode,
-benchmarks, and editor setup. ElixirLS uses this Mix project without per-day
-configuration.
+defparsec :number, integer(min: 1) |> eos()
+def process(input), do: Advent.Parse.lines(Advent.Input.lines(input), &number/1) |> Stream.map(&hd/1)
+def part1(numbers), do: Enum.sum(numbers)
+example "2\n3\n", part1: 5
+```
+
+Examples store native expected values. Omit an expectation while it is unknown, or use `example "input"` to declare runnable input without an assertion. The shared ExUnit suite uses the runner, including preprocessing. `sample` and old modules without `process/1` remain supported for compatibility.
+
+Omit an unimplemented part function rather than define one that raises. `run/0` executes available examples and existing personal input, skipping absent data/parts. Actual exceptions remain failures. Native `mix aoc.run` accepts `--stdin` or `--input PATH`; the default is central `data/yYY/dDD/input.txt`.
+
+The root `aoc bench` reports native timings with and without processing. Streams, including nested lazy character lines, are materialized only for solve-only benchmarks, then replayed; ordinary immutable values are reused. `aoc bench --wall` and `aoc run --time` include BEAM startup in process wall time.
+
+See [the Elixir solution guide](../docs/solutions.md#elixir), [developer manual](../docs/manual.md), and [editor setup](../docs/editors.md). The Elixir Nix shell provides compatible OTP, Elixir, and ElixirLS.

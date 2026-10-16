@@ -65,6 +65,243 @@ fn runs_both_parts_with_central_input_and_one_build() {
     );
 }
 #[test]
+fn run_time_explains_that_processing_and_startup_are_included() {
+    let dir = fixture();
+    let out = aoc(
+        dir.path(),
+        &[
+            "run", "22", "1", "--lang", "fixture", "--part", "1", "--time",
+        ],
+    );
+    assert_ok(&out);
+    let timing = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        timing.contains("runtime startup + processing + solving"),
+        "{timing}"
+    );
+    assert!(timing.contains("build excluded"));
+    assert_eq!(out.stdout, b"fixture\npart=1\n");
+}
+
+#[test]
+fn stdin_replays_for_both_parts_without_a_central_input() {
+    use std::{io::Write, process::Stdio};
+    let dir = fixture();
+    fs::remove_file(dir.path().join("data/y22/d01/input.txt")).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_aoc"))
+        .arg("--root")
+        .arg(dir.path())
+        .args(["run", "22", "1", "--lang", "fixture", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"  piped\r\n\n")
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_ok(&out);
+    assert_eq!(
+        out.stdout,
+        b"Part 1:   piped\r\n\npart=1\nPart 2:   piped\r\n\npart=2\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn clipboard_is_read_once_replayed_and_never_written() {
+    let dir = fixture();
+    let helper = dir.path().join("clipboard reader");
+    executable(&helper, "#!/bin/sh\nprintf 'read\\n' >> \"$AOC_ROOT/clipboard-calls\"\nprintf '  clipboard\\r\\n\\n'\nexit \"${CLIPBOARD_EXIT:-0}\"\n");
+    let run = |extra: &[&str], code: &str| {
+        Command::new(env!("CARGO_BIN_EXE_aoc"))
+            .arg("--root")
+            .arg(dir.path())
+            .args(["run", "22", "1", "--lang", "fixture", "--clipboard"])
+            .args(extra)
+            .env("AOC_ROOT", dir.path())
+            .env("AOC_CLIPBOARD_COMMAND", format!("'{}'", helper.display()))
+            .env("CLIPBOARD_EXIT", code)
+            .output()
+            .unwrap()
+    };
+    let out = run(&[], "0");
+    assert_ok(&out);
+    assert_eq!(
+        out.stdout,
+        b"Part 1:   clipboard\r\n\npart=1\nPart 2:   clipboard\r\n\npart=2\n"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("clipboard-calls")).unwrap(),
+        "read\n"
+    );
+    assert!(!run(&["--stdin"], "0").status.success());
+    let failed = run(&[], "7");
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+}
+
+#[test]
+fn selected_example_reports_pass_fail_and_unchecked_without_changing_answer_stdout() {
+    let dir = fixture();
+    let config = dir.path().join("aoc.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config).unwrap() + "example_expectations = true\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("adapter.sh"),
+        r#"#!/bin/sh
+set -eu
+case "$1" in
+build) ;;
+example) test "$4" = 2; printf '7\n' ;;
+run) cat ;;
+expect) test "$4" = 1; test "$5" = 2; cat "$AOC_ROOT/expectation" ;;
+esac
+"#,
+    )
+    .unwrap();
+    let args = [
+        "run",
+        "22",
+        "1",
+        "--lang",
+        "fixture",
+        "--part",
+        "1",
+        "--example=2",
+    ];
+    fs::write(dir.path().join("expectation"), "AOC_EXPECT_V1\n7\n").unwrap();
+    let pass = aoc(dir.path(), &args);
+    assert_ok(&pass);
+    assert_eq!(pass.stdout, b"7\n");
+    assert!(String::from_utf8_lossy(&pass.stderr).contains("Example 2 part 1: PASS"));
+    fs::write(dir.path().join("expectation"), "AOC_EXPECT_V1\n8\n").unwrap();
+    let fail = aoc(dir.path(), &args);
+    assert!(!fail.status.success());
+    let error = String::from_utf8_lossy(&fail.stderr);
+    assert!(
+        error.contains("FAIL")
+            && error.contains("expected")
+            && error.contains('8')
+            && error.contains('7'),
+        "{error}"
+    );
+    fs::write(dir.path().join("expectation"), "AOC_NO_EXPECT_V1\n").unwrap();
+    let unchecked = aoc(dir.path(), &args);
+    assert_ok(&unchecked);
+    assert!(String::from_utf8_lossy(&unchecked.stderr).contains("UNCHECKED"));
+    fs::write(dir.path().join("expectation"), "broken protocol").unwrap();
+    assert!(!aoc(dir.path(), &args).status.success());
+}
+
+#[test]
+fn inline_example_uses_the_normal_runner_without_real_input_or_assertions() {
+    let dir = fixture();
+    fs::remove_file(dir.path().join("data/y22/d01/input.txt")).unwrap();
+    fs::write(
+        dir.path().join("adapter.sh"),
+        r#"#!/bin/sh
+set -eu
+case "$1" in
+build) echo build >> "$AOC_ROOT/calls" ;;
+example) echo example >> "$AOC_ROOT/calls"; test "$4" = 2; printf '  example\n\n' ;;
+run) echo run >> "$AOC_ROOT/calls"; cat; printf 'part=%s\n' "$4" ;;
+esac
+"#,
+    )
+    .unwrap();
+    let out = aoc(
+        dir.path(),
+        &["run", "22", "1", "--lang", "fixture", "--example=2"],
+    );
+    assert_ok(&out);
+    assert_eq!(
+        out.stdout,
+        b"Part 1:   example\n\npart=1\nPart 2:   example\n\npart=2\n"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("calls")).unwrap(),
+        "build\nexample\nrun\nrun\n"
+    );
+    for extra in ["--example", "--example=0"] {
+        assert!(
+            !aoc(dir.path(), &["run", "22", "1", "--lang", "fixture", extra])
+                .status
+                .success()
+        );
+    }
+    assert!(!aoc(
+        dir.path(),
+        &[
+            "run",
+            "22",
+            "1",
+            "--lang",
+            "fixture",
+            "--example=2",
+            "--stdin"
+        ]
+    )
+    .status
+    .success());
+}
+
+#[test]
+fn single_part_stdin_can_finish_before_the_producer_sends_eof() {
+    use std::{
+        io::Write,
+        process::Stdio,
+        thread,
+        time::{Duration, Instant},
+    };
+    let dir = fixture();
+    fs::write(
+        dir.path().join("adapter.sh"),
+        "#!/bin/sh\n[ \"$1\" = build ] && exit 0\nhead -n 1\n",
+    )
+    .unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_aoc"))
+        .arg("--root")
+        .arg(dir.path())
+        .args([
+            "run", "22", "1", "--lang", "fixture", "--part", "1", "--stdin",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut producer = child.stdin.take().unwrap();
+    producer.write_all(b"first line\n").unwrap();
+    let start = Instant::now();
+    let completed = loop {
+        if child.try_wait().unwrap().is_some() {
+            break true;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            break false;
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    drop(producer);
+    let out = child.wait_with_output().unwrap();
+    assert!(
+        completed,
+        "CLI buffered stdin until EOF instead of streaming it"
+    );
+    assert_ok(&out);
+    assert_eq!(out.stdout, b"first line\n");
+}
+
+#[test]
 fn selected_samples_preserve_failure_status() {
     let dir = fixture();
     assert_ok(&aoc(
@@ -76,7 +313,7 @@ fn selected_samples_preserve_failure_status() {
         &["test", "2022", "1", "--lang", "fixture", "--part", "1"],
     );
     assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("samples failed"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("examples failed"));
 }
 #[test]
 fn offline_cache_hit_and_miss_require_no_network_or_cookie() {
@@ -132,6 +369,56 @@ fn benchmark_builds_once_and_runs_exact_count() {
     .status
     .success());
 }
+#[test]
+fn native_bench_reports_with_and_without_processing_separately() {
+    let dir = fixture();
+    let config = dir.path().join("aoc.toml");
+    let mut cfg = fs::read_to_string(&config).unwrap();
+    cfg.push_str("native_bench = true\n");
+    fs::write(config, cfg).unwrap();
+    fs::write(
+        dir.path().join("adapter.sh"),
+        r#"#!/bin/sh
+set -eu
+case "$1" in
+build) echo build >> "$AOC_ROOT/calls" ;;
+bench)
+  test "$4" = 2 && test "$5" = 2 && test "$6" = 1
+  test "$(cat)" = fixture
+  printf 'AOC_BENCH_V1\n5000000\n3000000 1000000\n5000000 2000000\nanswer\nwith newline\n'
+  ;;
+esac
+"#,
+    )
+    .unwrap();
+    let out = aoc(
+        dir.path(),
+        &[
+            "bench",
+            "22",
+            "1",
+            "--lang",
+            "fixture",
+            "--part",
+            "2",
+            "--iterations",
+            "2",
+        ],
+    );
+    assert_ok(&out);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("With processing") && text.contains("Without processing"),
+        "{text}"
+    );
+    assert!(
+        text.contains("median=4.000") && text.contains("median=1.500"),
+        "{text}"
+    );
+    assert!(text.contains("answer\nwith newline"));
+    assert!(text.contains("5.000 ms") && text.contains("buffer"));
+}
+
 #[test]
 fn custom_language_scaffolds_without_overwrite_and_routes_commands() {
     let dir = fixture();

@@ -20,7 +20,7 @@ case "$command" in
   build)
     exec cabal build exe:advent-exe --offline
     ;;
-  run|test)
+  run|test|example|expect|bench)
     if [[ "$command" == test ]]; then
       cabal build exe:advent-exe --offline >&2
     fi

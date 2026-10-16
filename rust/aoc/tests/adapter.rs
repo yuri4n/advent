@@ -28,6 +28,11 @@ impl Fixture {
             include_str!("../src/lib.rs"),
         )
         .unwrap();
+        fs::write(
+            root.join("rust/aoc/src/input.rs"),
+            include_str!("../src/input.rs"),
+        )
+        .unwrap();
         Self(root)
     }
 
@@ -76,7 +81,7 @@ fn generated_days_build_remain_unsolved_and_preserve_existing_files() {
     assert!(String::from_utf8_lossy(&sample.stderr).contains("incomplete"));
     let run = fixture.adapter(&["run", "2025", "3", "1"]);
     assert!(!run.status.success());
-    assert!(String::from_utf8_lossy(&run.stderr).contains("not yet implemented"));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("unavailable"));
     assert!(!fixture.adapter(&["new", "2025", "26"]).status.success());
 
     let registry = fixture.0.join("rust/years/y2025/src/main.rs");

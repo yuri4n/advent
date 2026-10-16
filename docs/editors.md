@@ -47,7 +47,7 @@ bash scripts/languages/scala.sh editor-setup
 
 The helper records an executable Scala CLI launcher in the BSP metadata, including when Scala CLI uses a Java wrapper. Then import or reconnect the build in Metals. Generated `.bsp`, `.scala-build`, and `.metals` files are local machine data; do not commit their absolute paths.
 
-Metals is the recommended Scala setup. Importing the build makes the pinned Scala compiler, Kyo dependency, and compiler options available to the language server. Ordinary `Day` solutions return effect-free `Answer < Any` computations, with optional Kyo parallelism and effects; `StreamingDay` supplies streaming input. See the [Scala language guide](manual.md#scala) for both APIs, inline samples, and native test commands. Reimport the build after changing dependency directives.
+Metals is the recommended Scala setup. Importing the build makes the pinned Scala compiler, Kyo dependency, and compiler options available to the language server. `Solution` objects extend KyoApp and can be run directly from the IDE. They use inner types, shared stream-first processing, typed examples, and optional parts; ordinary values and Kyo parallelism/effects are both supported. See the [Scala solution guide](solutions.md#scala) for the current API and native commands. Reimport the build after changing dependency directives.
 
 HLS must support your selected GHC version. Build the Cabal project first, then use automatic Cabal discovery. There is no committed `hie.yaml` pointing at a developer's machine.
 
@@ -59,7 +59,7 @@ Use **Tasks: Run Task**:
 
 - **AoC: new day** prompts for year, day, and language.
 - **AoC: run** selects a part and displays a timing.
-- **AoC: test** checks sample assertions for the selected part.
+- **AoC: test** checks example assertions for the selected part.
 - **AoC: watch** keeps the command running while you edit.
 - **AoC: doctor** reports available tools.
 
@@ -199,7 +199,7 @@ Debug support depends on the selected language, editor, and installed debug adap
 - Scala: use a Metals run/debug target after BSP import.
 - Haskell: use a compatible Haskell debugging integration or GHCi for the day's module.
 
-For command-line runners, pass the same year/day/part arguments as the adapter and arrange standard input from `data/yYY/dDD/input.txt`. A native sample test is usually the easiest deterministic debug target.
+For deterministic debugging, select an example test or use `aoc run ... --example`. Scala day objects are directly executable; native automatic entry points in all languages run available examples and existing input without fetching anything. See [direct execution](manual.md#editors-and-direct-execution). Explicit runner commands still accept year/day/part arguments and stdin.
 
 The repository does not commit a universal `launch.json`: executable paths, debug adapters, and compiler support differ across platforms.
 
@@ -207,6 +207,6 @@ The repository does not commit a universal `launch.json`: executable paths, debu
 
 Twenty headless startup tests using Neovim 0.11.5 and a fixture LSP server pass. They cover personal configuration discovery and preservation, standalone defaults, initial-buffer attachment, diagnostics, existing and delayed personal servers, and recoverable startup failures. Run them from the repository root with `python3 editor/nvim/tests/run.py`; `--nvim /path/to/nvim` selects another Neovim executable. The Nix `editor` check is configured to run the same regressions.
 
-Actual rust-analyzer attachment and navigation into the shared Rust harness were checked. With the revised startup, Metals 1.6.3 reported an intentional type error in the Scala 3.7.3/Kyo 0.19.0 project and resolved a definition into the shared `Day` harness. Scala's editor-setup helper successfully generated an executable BSP launcher. Zed launch arguments and native project preparation were checked; an interactive Zed GUI session was not available in the cloud environment.
+Actual rust-analyzer attachment and navigation into the shared Rust harness were checked. With the revised startup, Metals 1.6.3 reported an intentional type error in the Scala 3.9.0/Kyo 1.0.0-RC7 project and resolved a definition into the shared `Day` harness. Scala's editor-setup helper successfully generated an executable BSP launcher. Zed launch arguments and native project preparation were checked; an interactive Zed GUI session was not available in the cloud environment.
 
 The workspace and task files are JSON, use repository-relative paths, and delegate to the shared CLI. Native build/test validation is separate from a full interactive editor session. Completion, diagnostics, formatting plugins, and breakpoint support depend on the installed editor/server versions; they are not claimed to have been exercised in every editor.

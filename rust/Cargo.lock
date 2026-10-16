@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "aoc"
 version = "0.1.0"
+dependencies = [
+ "winnow",
+]
 
 [[package]]
 name = "aoc-y2021"
@@ -18,4 +21,19 @@ name = "aoc-y2022"
 version = "0.1.0"
 dependencies = [
  "aoc",
+]
+
+[[package]]
+name = "memchr"
+version = "2.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "winnow"
+version = "0.7.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
+dependencies = [
+ "memchr",
 ]

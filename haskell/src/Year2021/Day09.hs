@@ -1,9 +1,13 @@
-module Year2021.Day09 (parse, part1, part2, samples) where
+module Year2021.Day09 (process, part1, part2, examples, puzzle, main) where
 
-import AOC (Sample (..))
+import AOC
+import qualified AOC.Input as Input
+import AOC.Parsing (records)
+import Text.Megaparsec (some)
+import Text.Megaparsec.Char (digitChar)
 
 import Data.Array as Array (Array, elems, listArray, (!))
-import Data.Char (digitToInt, isDigit)
+import Data.Char (digitToInt)
 import Data.List (sort)
 import Data.Set (fromList, toList)
 import Prelude hiding (Left, Right)
@@ -28,10 +32,15 @@ findLowPoints xxs = [(i, j) | i <- [0 .. m - 1], j <- [0 .. n - 1], isLp i j]
     n = length (head $ elems xxs)
     isLp = isLowPoint m n xxs
 
-parse :: String -> HeightMap
-parse source = Array.listArray (0, length rows - 1) rows
+process :: Input.Input -> HeightMap
+process source = Array.listArray (0, length rows - 1) rows
   where
-    rows = [Array.listArray (0, length ln - 1) [digitToInt ch | ch <- ln, isDigit ch] | ln <- lines source]
+    rows = [Array.listArray (0, length row - 1) row | row <- records (some (digitToInt <$> digitChar)) (Input.lines source)]
+
+puzzle :: Day
+puzzle = solution 2021 9 process (Just part1) (Just part2) examples
+main :: IO ()
+main = runAvailable puzzle
 
 part1 :: HeightMap -> Int
 part1 xxs =
@@ -85,11 +94,11 @@ part2 xxs = do
     product . take 3 . reverse . sort $
         [length bas | lp <- lowPoints, let bas = findBasinFromLow lp xxs]
 
-samples :: [Sample]
-samples = [Sample (unlines
+examples :: [Example Int Int]
+examples = [ExampleBoth (unlines
     [ "2199943210"
     , "3987894921"
     , "9856789892"
     , "8767896789"
     , "9899965678"
-    ]) (Just "15") (Just "1134")]
+    ]) 15 1134]

@@ -24,25 +24,29 @@ for marker, content in [("      -- aoc:modules", cabal), ("-- aoc:imports", entr
         sys.exit(f"Expected exactly one registration marker: {marker}")
 new_cabal = cabal.replace("      -- aoc:modules", f"      {module}\n      -- aoc:modules")
 new_entries = entries.replace("-- aoc:imports", f"import qualified {module} as {alias}\n-- aoc:imports")
-new_entries = new_entries.replace("    -- aoc:days", f"    , day {year} {day} {alias}.parse {alias}.part1 {alias}.part2 {alias}.samples\n    -- aoc:days")
-stub = f'''module {module} (parse, part1, part2, samples) where
+new_entries = new_entries.replace("    -- aoc:days", f"    , {alias}.puzzle\n    -- aoc:days")
+stub = f'''module {module} (process, examples, puzzle, main) where
 
-import AOC (Sample (..))
+import AOC
+import qualified AOC.Input as Input
 
-type Input = String
+type Prepared = [String]
 
-parse :: String -> Input
-parse = id
+process :: Input.Input -> Prepared
+process = Input.lines
 
-part1 :: Input -> Integer
-part1 = undefined
+-- Replace a Nothing with Just part1/part2 when that part is implemented.
+puzzle :: Day
+puzzle = solution {year} {day} process
+    (Nothing :: Maybe (Prepared -> Integer))
+    (Nothing :: Maybe (Prepared -> Integer)) examples
 
-part2 :: Input -> Integer
-part2 = undefined
+main :: IO ()
+main = runAvailable puzzle
 
--- Example: Sample "your sample input" (Just "expected part 1") Nothing
-samples :: [Sample]
-samples = []
+-- Example1 "your example input" expectedPart1
+examples :: [Example Integer Integer]
+examples = []
 '''
 source.parent.mkdir(parents=True, exist_ok=True)
 # Exclusive creation prevents an existing solution from being overwritten.

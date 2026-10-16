@@ -14,10 +14,12 @@ defmodule Advent.Scaffold do
     defmodule Advent.Y#{yy}.D#{dd} do
       use Advent.Day, year: #{year}, day: #{day}
 
-      # sample "example input", part1: expected_answer
+      # example "example input", part1: expected_answer
 
-      def part1(_input), do: raise("TODO: implement part 1")
-      def part2(_input), do: raise("TODO: implement part 2")
+      def process(input), do: Advent.Input.lines(input)
+      # Define parts only once implemented; absent functions are skipped by run/0.
+      # def part1(_input), do: raise("TODO: implement part 1")
+      # def part2(_input), do: raise("TODO: implement part 2")
     end
     """
 

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,9 +36,28 @@ func New(root string, year, day int) (string, error) {
 			os.RemoveAll(dir)
 		}
 	}()
-	solution := fmt.Sprintf("package d%02d\n\nfunc Part1(input string) int {\n\tpanic(\"TODO: implement part 1\")\n}\n\nfunc Part2(input string) int {\n\tpanic(\"TODO: implement part 2\")\n}\n", day)
-	samples := fmt.Sprintf("package d%02d\n\nimport \"testing\"\n\n// Keep sample input as an inline string in this file.\nfunc TestSamples(t *testing.T) {\n\tt.Run(\"part1\", func(t *testing.T) {\n\t\tt.Fatal(\"no samples: add an inline input and expected Part1 answer\")\n\t})\n\tt.Run(\"part2\", func(t *testing.T) {\n\t\tt.Fatal(\"no samples: add an inline input and expected Part2 answer\")\n\t})\n}\n", day)
-	for name, data := range map[string]string{"solution.go": solution, "sample_test.go": samples} {
+	solution := fmt.Sprintf(`package d%02d
+
+import "github.com/yurianthedev/advent/internal/runner"
+
+func Process(input *runner.Input) (runner.Stream[string], error) { return input.Lines(), nil }
+func Part1(input runner.Stream[string]) (int, error) { panic("TODO: implement part 1") }
+func Part2(input runner.Stream[string]) (int, error) { panic("TODO: implement part 2") }
+
+var Examples = []runner.Example[int, int]{}
+// Replace nil with Part1 or Part2 only after implementing that part.
+var Solution = runner.New(Process, nil, nil, Examples...)
+`, day)
+	samples := fmt.Sprintf(`package d%02d
+
+import "testing"
+
+func TestExamples(t *testing.T) {
+    t.Run("part1", func(t *testing.T) { if err := Solution.CheckExamples(1); err != nil { t.Fatal(err) } })
+    t.Run("part2", func(t *testing.T) { if err := Solution.CheckExamples(2); err != nil { t.Fatal(err) } })
+}
+`, day)
+	for name, data := range map[string]string{"solution.go": solution, "example_test.go": samples} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0644); err != nil {
 			return "", err
 		}
@@ -85,7 +106,16 @@ func GenerateRegistry(root string) error {
 	}
 	fmt.Fprintln(&source, ")\n\nvar days = map[runner.Key]runner.Day{")
 	for _, key := range keys {
-		fmt.Fprintf(&source, "\t{Year: %d, Day: %d}: runner.Register(y%02dd%02d.Part1, y%02dd%02d.Part2),\n", key.Year, key.Day, key.Year%100, key.Day, key.Year%100, key.Day)
+		file := filepath.Join(root, fmt.Sprintf("y%02d/d%02d/solution.go", key.Year%100, key.Day))
+		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+		if err != nil {
+			return err
+		}
+		if parsed.Scope.Lookup("Solution") != nil {
+			fmt.Fprintf(&source, "\t{Year: %d, Day: %d}: y%02dd%02d.Solution,\n", key.Year, key.Day, key.Year%100, key.Day)
+		} else {
+			fmt.Fprintf(&source, "\t{Year: %d, Day: %d}: runner.Register(y%02dd%02d.Part1, y%02dd%02d.Part2),\n", key.Year, key.Day, key.Year%100, key.Day, key.Year%100, key.Day)
+		}
 	}
 	fmt.Fprintln(&source, "}")
 	formatted, err := format.Source(source.Bytes())

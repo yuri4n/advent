@@ -1,17 +1,20 @@
 package aoc.solutions.y2021
 
-import aoc.{Day, Sample}
-import kyo.<
+import aoc.{ExampleBoth, Input, Puzzle, Solution}
+import kyo.*
 import scala.annotation.tailrec
 
-object Day01 extends Day[Int, Int] {
-  def part1(input: String): Int < Any = {
-    countIncreases(input.linesIterator.map(_.toInt).toVector)
-  }
+object Day01 extends Solution {
+  type Prepared = Vector[Int]
+  type Answer1  = Int
+  def process(input: Input): Vector[Int] < Puzzle.Effects =
+    input.lines
+      .map(line => Parse.runOrAbort(line)(Parse.entireInput(Parse.int)))
+      .fold(Vector.empty[Int])(_ :+ _)
 
-  def part2(input: String): Int < Any = {
-    countIncreases(mapTriples(input.linesIterator.map(_.toInt).toVector))
-  }
+  override val part1 = solve((input: Prepared) => countIncreases(input))
+  override val part2 =
+    solve((input: Prepared) => countIncreases(mapTriples(input)))
 
   def countIncreases(depthsList: Seq[Int]): Int =
     depthsList.zip(depthsList.tail).foldRight(0) { (pair, acc) =>
@@ -28,11 +31,11 @@ object Day01 extends Day[Int, Int] {
     exec(Vector(), depthLists)
   }
 
-  override val samples = Seq(
-    Sample(
+  override val examples = Seq(
+    ExampleBoth(
       "199\n200\n208\n210\n200\n207\n240\n269\n260\n263\n",
-      Some("7"),
-      Some("5")
+      7,
+      5
     )
   )
 }
